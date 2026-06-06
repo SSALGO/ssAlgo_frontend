@@ -1,0 +1,159 @@
+import axiosInstance from './axiosInstance';
+import { getErrorMessage } from './errorHandler';
+
+
+
+
+
+
+const transformToURLEncoded = (data) => {
+  const urlEncodedData = new URLSearchParams();
+  Object.entries(data).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        value.forEach((item) => urlEncodedData.append(key, item));
+      } else if (value !== undefined && value !== null) {
+        urlEncodedData.append(key, value);
+      }
+  });
+  return urlEncodedData;
+};
+
+const transformToFormData = (data) => {
+  const formData = new FormData();
+  Object.entries(data).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => formData.append(key, item));
+    } else if (value !== undefined && value !== null) {
+      formData.append(key, value);
+    }
+  });
+  return formData;
+};
+
+
+export const fetchGetData = async (endpoint, params = {}, token = null) => {
+  try {
+    // Convert params object to URL encoded string
+    const queryString = new URLSearchParams(params).toString();
+    const url = queryString ? `${endpoint}?${queryString}` : endpoint;
+
+    const config = {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded', // Optional for GET
+      },
+    };
+
+    // Add Authorization header if token is provided
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await axiosInstance.get(url, config);
+    return response.data;
+  } catch (error) {
+    const errorMessage = getErrorMessage(error);
+    throw new Error(errorMessage);
+  }
+};
+
+
+//
+
+  export const updateData = async (endpoint, data = {}, token) => {
+    try {
+
+      const formData = transformToFormData(data);
+
+
+      const config = {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+
+        }
+      };
+
+      const response = await axiosInstance.put(endpoint, formData, config);
+      return response.data;
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
+      throw new Error(errorMessage);
+    }
+  };
+
+  export const postData = async (endpoint, data = {}, token = null) => {
+    try {
+        const urlEncodedData = transformToURLEncoded(data);
+        const config = {
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+        };
+
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+
+        const response = await axiosInstance.post(endpoint, urlEncodedData, config);
+        return response.data;
+    } catch (error) {
+        const errorMessage = getErrorMessage(error);
+        throw new Error(errorMessage);
+    }
+};
+
+
+export const postFormData = async (endpoint, formData, token = null) => {
+  try {
+      const config = {
+          headers: {
+              'Content-Type': 'multipart/form-data', 
+          },
+      };
+      if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+      }
+      const response = await axiosInstance.post(endpoint, formData, config);
+      return response.data;
+  } catch (error) {
+      const errorMessage = getErrorMessage(error);
+      throw new Error(errorMessage);
+  }
+};
+
+
+
+
+  export const deleteData = async (endpoint,token) => {
+    try {
+        const config = {
+            headers: {},
+          };
+
+          // Add Authorization header if token is provided
+          if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+          }
+
+        const response = await axiosInstance.delete(endpoint,config);
+      return response.data;
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
+      throw new Error(errorMessage);
+    }
+  };
+
+
+  export const patchData = async (endpoint, data = {}) => {
+
+    try {
+      const formData = transformToFormData(data);
+
+      const response = await axiosInstance.patch(endpoint, formData);
+      return response.data;
+    } catch (error) {
+
+      const errorMessage = getErrorMessage(error);
+
+      throw new Error(errorMessage);
+    }
+  };
