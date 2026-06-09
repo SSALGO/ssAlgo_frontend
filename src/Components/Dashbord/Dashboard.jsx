@@ -38,6 +38,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
   const [itemToDelete, setItemToDelete] = useState(null);
   const [expiryDate, setExpiryDate] = useState("")
   const [brokers,setBrokers]=useState({})
+  const [dashboardError, setDashboardError] = useState("")
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -62,11 +63,12 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
    const response = await postData("api_delete_oposition", { position_time: id, token });
  }
   const fetchIndex = async () => {
+    setLoading(true);
+    setDashboardError("");
     try {
       const token = localStorage.getItem("token");
       const response = await postData("api_index", { token });
       const indexData = getApiData(response) || {};
-      setLoading(false);
       setStrategies(normalizeRecords(indexData.strategy));
       setOpenPositions(normalizeRecords(indexData.opositions));
       setUserLog(toBooleanFlag(indexData.userlog));
@@ -79,6 +81,8 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
     } catch (error) {
       console.error("Error fetching APIs:", error);
+      setDashboardError(error.message || "Unable to load dashboard data.");
+    } finally {
       setLoading(false);
     }
   };
@@ -135,7 +139,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
 
   const OpenForm = async (strategy) => {
-       setLoading(true);
+    setLoading(true);
     try {
       const token = localStorage.getItem("token");
       const response = await postData("api_add_strategy_form", {
@@ -143,28 +147,29 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
         token,
       });
 
-      if (response && response.data) {
-        // console.log("Strategy form data:", response.data);
-        if(response.data.StrategyRemaining >= strategies.length){
-          console.log("Strategy form data:", strategies.length);
-          setStrategyData(response.data);
-        setLoading(false);
-        setShowDynamicForm(true);
-        setShowEditForm(false);
-        closeDropdown();
+      const form = getApiData(response);
+      if (form && Array.isArray(form.page)) {
+        if (!form.page.length) {
+          throw new Error("This strategy form is unavailable. Deploy the updated backend and retry.");
         }
-        else{
-          alert("You have reached the limit of strategies")
-          setLoading(false);
+
+        if (Number(form.StrategyRemaining) > 0) {
+          setStrategyData(form);
+          setShowDynamicForm(true);
+          setShowEditForm(false);
+          closeDropdown();
+        } else {
+          toast.error("You have reached your strategy limit.");
           closeDropdown();
         }
-
-
       } else {
-        console.error("No data received from the API.");
+        throw new Error("Invalid strategy form response from the server.");
       }
     } catch (error) {
       console.error("Error in fetching strategy form data:", error);
+      toast.error(error.message || "Unable to load the strategy form.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -179,19 +184,21 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
     setShowDeletePopup(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     const token = localStorage.getItem("token");
 
     setShowDeletePopup(false);
 
-    const response = postData("api_delete_strategy", {
-      id: itemToDelete,
-      token,
-    });
-    // window.location.reload();
-    fetchIndex();
-
-    // toast.success("Strategy deleted successfully");
+    try {
+      await postData("api_delete_strategy", {
+        id: itemToDelete,
+        token,
+      });
+      toast.success("Strategy deleted successfully.");
+      await fetchIndex();
+    } catch (error) {
+      toast.error(error.message || "Unable to delete the strategy.");
+    }
 
   };
 
@@ -201,13 +208,23 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
   };
 
   const OnModify = async (data) => {
-    const token = localStorage.getItem("token");
-    const response = await postData(`api_edit_strategy_form/${data.botcode}`, {
-      token,
-    });
-    setEditData(response.data);
-    setShowEditForm(true);
-    // console.log("update form modify", response);
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const response = await postData(`api_edit_strategy_form/${data.botcode}`, {
+        token,
+      });
+      const form = getApiData(response);
+      if (!form?.page?.length) {
+        throw new Error("The edit form is unavailable for this strategy.");
+      }
+      setEditData(form);
+      setShowEditForm(true);
+    } catch (error) {
+      toast.error(error.message || "Unable to edit the strategy.");
+    } finally {
+      setLoading(false);
+    }
   };
 
 
@@ -282,6 +299,18 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
   return (
     <>
+      {dashboardError && (
+        <div className="mx-6 mt-4 rounded border border-red-200 bg-red-50 px-4 py-3 normal-case text-red-700">
+          <p>{dashboardError}</p>
+          <button
+            type="button"
+            onClick={fetchIndex}
+            className="mt-2 rounded bg-red-700 px-3 py-1 text-sm font-semibold text-white"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       <header className="relative z-50 max-lg:pt-16">
         <nav className="relative z-50 flex justify-between items-center py-4 px-6 max-lg:px-3">
           <div className="flex space-x-8 relative z-50">

@@ -22,9 +22,6 @@ const OptionGrid = ({
         return parent?.children || [];
     }, [formData.page]);
 
-    console.log("formatTableFields", formatTableFields)
-
-
     const handleTableInputChange = (e, index) => {
         setOptions([
             ...options.slice(0, index),

@@ -20,12 +20,12 @@ const BrokerSetup = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
-  const token = localStorage.getItem("token");
+  const accessToken = localStorage.getItem("accessToken");
 
   const fetchBrokerList = async () => {
     try {
       setLoadError("");
-      const response = await fetchFastApiGetData("api/brokers", {}, token);
+      const response = await fetchFastApiGetData("api/brokers", {}, accessToken);
 
       if (response?.success && response.data) {
         const {
@@ -76,7 +76,7 @@ const BrokerSetup = () => {
 
   const fetchBrokerHealth = async () => {
     try {
-      const response = await fetchFastApiGetData("api/brokers/status", {}, token);
+      const response = await fetchFastApiGetData("api/brokers/status", {}, accessToken);
       if (response?.success) {
         setBrokerHealth(toArray(response.data).length ? response.data : Object.keys(toObject(response.data)).length ? [response.data] : []);
       }
@@ -87,7 +87,7 @@ const BrokerSetup = () => {
 
   const fetchSavedBrokerData = async (brokerKey, requirements = []) => {
     try {
-      const response = await fetchFastApiGetData(`api/brokers/${brokerKey}/credentials`, {}, token);
+      const response = await fetchFastApiGetData(`api/brokers/${brokerKey}/credentials`, {}, accessToken);
 
       if (response?.success && response.data) {
         const { _id, ...fields } = toObject(response.data);
@@ -152,7 +152,7 @@ const BrokerSetup = () => {
       const response = await postFastApiJsonData(`api/brokers/${selectedBroker}/credentials`, {
         values: fieldValues,
         activate: true,
-      }, token);
+      }, accessToken);
 
       if (response?.success) {
         toast.success("Credentials saved successfully");

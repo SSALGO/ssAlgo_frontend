@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { displayValue } from '../../utils/displayValue';
 import { postData, fetchGetData, postFormData } from "../../api";
-import { toast, ToastContainer } from "react-toastify";
+import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import OptionGrid, { tableFields } from '../OptionGrid/OptionGrid';
+import OptionGrid, { initialOption } from '../OptionGrid/OptionGrid';
 
 
 const MultiSelect = ({ limit, value = [], onChange, name }) => {
@@ -126,6 +126,7 @@ const MultiSelect = ({ limit, value = [], onChange, name }) => {
 const DynamicForm = ({ formData = {}, onClose }) => {
   const [formValues, setFormValues] = useState({});
   const [options, setOptions] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const url = formData?.action_url?.replace("/", "");
   const token = localStorage.getItem("token");
 
@@ -173,10 +174,11 @@ const DynamicForm = ({ formData = {}, onClose }) => {
           });
           optionsData.push(optionRow);
         });
-        setOptions(optionsData);
         delete initialValues.legs; // Remove legs from main form values
       }
 
+      const hasOptionGrid = formData.page.some(field => Array.isArray(field.children));
+      setOptions(optionsData.length > 0 ? optionsData : (hasOptionGrid ? [{ ...initialOption }] : []));
       setFormValues(initialValues);
     }
   }, [formData]);
@@ -199,25 +201,38 @@ const DynamicForm = ({ formData = {}, onClose }) => {
       return;
     }
 
-    const formData = new FormData();
+    const submission = new FormData();
     Object.keys(formValues).forEach(key => {
-        formData.append(key, formValues[key])
+      const value = formValues[key];
+      if (Array.isArray(value)) {
+        value.forEach((item) => submission.append(key, item));
+      } else {
+        submission.append(key, value);
+      }
     });
 
-    formData.append("token", token);
+    submission.append("token", token);
 
     options.forEach(option => {
       Object.keys(option).forEach(key => {
-        formData.append(key, option[key]);  // No slicing, keep "o" prefix
+        submission.append(key, option[key]);
       });
     });
 
+    setIsSubmitting(true);
     try {
-      await postFormData(url, formData);
+      const response = await postFormData(url, submission);
+      if (response?.success === false) {
+        throw new Error(response.message || "Strategy creation failed.");
+      }
+      toast.success(response?.message || "Strategy created successfully.");
       onClose();
       window.location.reload();
     } catch (error) {
       console.error('Form submission error:', error);
+      toast.error(error.message || "Unable to create the strategy.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -347,9 +362,10 @@ const DynamicForm = ({ formData = {}, onClose }) => {
 
         <button
           type="submit"
-          className="mt-6 px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          disabled={isSubmitting}
+          className="mt-6 px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Save
+          {isSubmitting ? "Saving..." : "Save Strategy"}
         </button>
       </form>
     </div>

@@ -9,10 +9,11 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { postData } from '../../api';
+import { toast } from 'react-toastify';
 
 // Utility function to load Razorpay script
 const loadRazorpayScript = () => {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     if (window.Razorpay) {
       resolve();
       return;
@@ -21,6 +22,7 @@ const loadRazorpayScript = () => {
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
     script.async = true;
     script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Unable to load the payment service.'));
     document.body.appendChild(script);
   });
 };
@@ -70,8 +72,9 @@ const Pricing = () => {
   const fetchPricing = useCallback(async () => {
     try {
       setIsLoading(true);
+      setError(null);
       const response = await postData("api_pricing");
-      setPricing(response.data);
+      setPricing(Array.isArray(response?.data) ? response.data : []);
     } catch (error) {
       console.error("Error fetching pricing:", error);
       setError("Unable to fetch pricing information. Please try again later.");
@@ -79,45 +82,49 @@ const Pricing = () => {
       setIsLoading(false);
     }
   }, []);
-  var duration = 0;
-
-  // Handle successful payment
-  const handlePaymentSuccess = useCallback(async(response) => {
-    // console.log(response);
-    const  token = localStorage.getItem("token");
-    // const [razorpay_signature, razorpay_payment_id, razorpay_order_id] = response
-    const responseData = await postData("api_pay_verify", { signature:response.razorpay_signature, payment_id:response.razorpay_payment_id, order_id:response.razorpay_order_id, token,duration});
-    // const responseData = await postData("api_pay_verify", response);
-    // console.log(responseData);
-    
-    // Here you might want to update user's subscription status or redirect to a success page
-  }, []);
-
   // Handle payment initiation
   const handlePayment = useCallback(async (title, price) => {
     try {
+      setError(null);
       const token = localStorage.getItem("token");
       if (!token) {
         throw new Error("Authentication token not found");
       }
 
       const response = await postData("api_pay", { price:title, token });
-      duration = response.data.duration
-      
+      const paymentData = response?.data;
+      if (!paymentData?.payment?.id || !paymentData?.key || !paymentData?.duration) {
+        throw new Error("The payment service returned an incomplete response.");
+      }
+
       await loadRazorpayScript();
 
       const options = {
-        key: response.key,
-        amount: response.data.payment.amount * 100,
+        key: paymentData.key,
+        amount: paymentData.payment.amount,
         currency: "INR",
-        order_id: response.data.payment.id,
+        order_id: paymentData.payment.id,
         name: "SSALGO",
         description: "Subscription Payment",
-        handler: handlePaymentSuccess,
+        handler: async (paymentResponse) => {
+          try {
+            await postData("api_pay_verify", {
+              signature: paymentResponse.razorpay_signature,
+              payment_id: paymentResponse.razorpay_payment_id,
+              order_id: paymentResponse.razorpay_order_id,
+              token,
+              duration: paymentData.duration,
+            });
+            toast.success("Payment verified and subscription updated.");
+          } catch (verificationError) {
+            console.error("Payment verification error:", verificationError);
+            toast.error(verificationError.message || "Payment verification failed.");
+          }
+        },
         prefill: {
-          name: response.data.name,
-          email: response.data.email,
-          contact: response.data.ph_nm,
+          name: paymentData.name,
+          email: paymentData.email,
+          contact: paymentData.ph_nm,
         },
         theme: {
           color: "#FF5733",
@@ -130,7 +137,7 @@ const Pricing = () => {
       console.error("Payment error:", error);
       setError(error.message || "An error occurred while processing the payment. Please try again.");
     }
-  }, [handlePaymentSuccess]);
+  }, []);
 
   // Load Razorpay script and fetch pricing on component mount
   useEffect(() => {
@@ -143,7 +150,7 @@ const Pricing = () => {
       <div className="text-red-500 p-4 bg-red-100 border border-red-400 rounded">
         <p>{error}</p>
         <button 
-          onClick={window.location.reload()}
+          onClick={fetchPricing}
           className="mt-2 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition duration-300"
         >
           Retry
@@ -168,12 +175,12 @@ const Pricing = () => {
     { priceColor: "text-orange-500", bgColor: "bg-orange-500" }
   ];
   
-  const plans = pricing.map((item, index) => ({
+  const plans = (pricing || []).map((item, index) => ({
     title: item[0],                   // Plan title (e.g., "1 Month")
     originalPrice: item[1],           // Original price
     discountedPrice: item[2],         // Discounted price
-    priceColor: colors[index].priceColor, // Get price color from colors array
-    color: colors[index].bgColor    // Get background color from colors array
+    priceColor: colors[index % colors.length].priceColor, // Get price color from colors array
+    color: colors[index % colors.length].bgColor    // Get background color from colors array
   }));
   
 

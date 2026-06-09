@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { postData } from '../../api';
-import { toast, ToastContainer } from 'react-toastify';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { displayValue, getApiData, toBooleanFlag } from '../../utils/displayValue';
 
@@ -14,6 +14,9 @@ const UserProfile = ({ user }) => {
   const [dayProfitLimit, setDayProfitLimit] = useState('');
   const [dayLossLimit, setDayLossLimit] = useState('');
   const [tradeLimit, setTradeLimit] = useState('');
+  const [loading, setLoading] = useState(!user);
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setUserProfile(user || {});
@@ -25,14 +28,23 @@ const UserProfile = ({ user }) => {
   useEffect(() => {
     const fetchProfile = async () => {
       if (!tokens) return;
-      const response = await postData("api_user_profile", { token: tokens });
-      const profile = getApiData(response);
-      if (profile && typeof profile === 'object' && !Array.isArray(profile)) {
-        setUserProfile(profile);
-        setToken(profile.token || tokens);
-        setDayProfitLimit(profile.day_profit_limit || '');
-        setDayLossLimit(profile.day_loss_limit || '');
-        setTradeLimit(profile.trade_limit || '');
+      setLoading(true);
+      setError('');
+      try {
+        const response = await postData("api_user_profile", { token: tokens });
+        const profile = getApiData(response);
+        if (profile && typeof profile === 'object' && !Array.isArray(profile)) {
+          setUserProfile(profile);
+          setToken(profile.token || tokens);
+          setDayProfitLimit(profile.day_profit_limit || '');
+          setDayLossLimit(profile.day_loss_limit || '');
+          setTradeLimit(profile.trade_limit || '');
+        }
+      } catch (fetchError) {
+        console.error('Error fetching user profile:', fetchError);
+        setError(fetchError.message || 'Unable to load your profile.');
+      } finally {
+        setLoading(false);
       }
     };
     fetchProfile();
@@ -40,25 +52,32 @@ const UserProfile = ({ user }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const response = await postData("api_user_profile", {
-      token,
-      day_profit_limit: dayProfitLimit,
-      day_loss_limit: dayLossLimit,
-      trade_limit: tradeLimit,
-    });
-
-    if (response.success) {
+    setSubmitting(true);
+    try {
+      const response = await postData("api_user_profile", {
+        token,
+        day_profit_limit: dayProfitLimit,
+        day_loss_limit: dayLossLimit,
+        trade_limit: tradeLimit,
+      });
+      if (response?.success === false) {
+        throw new Error(response.message || "Update failed. Try again.");
+      }
       toast.success("Trading limits updated!");
-      setUserProfile(response.data);
-    } else {
-      toast.error("Update failed. Try again.");
+      setUserProfile(getApiData(response) || userProfile);
+    } catch (submitError) {
+      console.error('Error updating trading limits:', submitError);
+      toast.error(submitError.message || "Update failed. Try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <div className="uppercase lg:px-6 px-3 py-4">
-      <ToastContainer />
       <h1 className="text-2xl font-bold mb-6 max-lg:mt-14">User Profile</h1>
+      {loading && <p className="mb-4 text-gray-600">Loading profile...</p>}
+      {error && <p className="mb-4 text-red-600 font-semibold">{error}</p>}
       <h2 className="text-xl font-semibold mb-4">Account Overview</h2>
 
       <div className="bg-white border-gray-200 border-2 rounded-lg">
@@ -136,9 +155,10 @@ const UserProfile = ({ user }) => {
           <div className="text-right">
             <button
               type="submit"
+              disabled={submitting}
               className="bg-[#FF5733] text-white py-2 px-4 rounded-md font-semibold hover:bg-orange-600 transition duration-300 text-sm w-fit"
             >
-              Update Limits
+              {submitting ? 'Updating...' : 'Update Limits'}
             </button>
           </div>
         </form>
