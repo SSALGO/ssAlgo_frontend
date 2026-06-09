@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Link, useLocation } from 'react-router-dom';
 import { postData } from '../../api';
+import { displayValue, getApiData } from '../../utils/displayValue';
 
 const Sidebar = ({ userType,isOpen, toggleSidebar,changeUserTypeToUser }) => {
   const location = useLocation();
@@ -21,11 +22,8 @@ const Sidebar = ({ userType,isOpen, toggleSidebar,changeUserTypeToUser }) => {
     try {
       const token = localStorage.getItem("token");
       const response = await postData("api_index", { token });
-      // console.log("dashboard data", response.data.strategy);
-      // setStrategies(response.data.strategy);
-        // "user_expiry": "2024-09-04",
-        // console.log("index datta", response.data.user_expiry);
-      setdate(response.data.user_expiry);
+      const indexData = getApiData(response) || {};
+      setdate(displayValue(indexData.user_expiry));
 
       // setApiData(response.data);
     } catch (error) {
@@ -255,7 +253,7 @@ const Sidebar = ({ userType,isOpen, toggleSidebar,changeUserTypeToUser }) => {
 };
 
 Sidebar.propTypes = {
-  userType: PropTypes.oneOf(['admin', 'user']).isRequired,
+  userType: PropTypes.oneOf(['admin', 'user']),
 };
 
 export default Sidebar;

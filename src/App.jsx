@@ -24,6 +24,10 @@ import { postData } from "./api";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import ScrollToTop from "./Components/Buttons/ScrollToTop";
+import ErrorBoundary from "./Components/ErrorBoundary";
+import { toBooleanFlag, toObject, getApiData, repairAuthStorage } from "./utils/displayValue";
+
+repairAuthStorage();
 
 const ProtectedRoute = ({ children, redirectTo, isAuthenticated }) => {
   return isAuthenticated ? children : <Navigate to={redirectTo} />;
@@ -46,7 +50,7 @@ function AppContent() {
 
   const isAuth = localStorage.getItem("token");
   const isAuthenticated = !isAuth || isAuth === "undefined" ? false : true;
-  const userType = localStorage.getItem("userType");
+  const userType = localStorage.getItem("userType") || "user";
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -151,7 +155,19 @@ function AppContent() {
     try {
       const token = localStorage.getItem("token");
       const response = await postData("api_user_profile", { token });
-      setUserProfile(response.data);
+      const profile = getApiData(response);
+      if (profile && typeof profile === "object" && !Array.isArray(profile)) {
+        setUserProfile(
+          Object.fromEntries(
+            Object.entries(profile).map(([key, value]) => [
+              key,
+              typeof value === "object" ? JSON.stringify(value) : value ?? "",
+            ])
+          )
+        );
+      } else {
+        setUserProfile({});
+      }
     } catch (error) {
       console.error("Error fetching user profile:", error);
     }
@@ -177,8 +193,8 @@ function AppContent() {
   };
 
   const headerData = (data) => {
-    setuserlog(data.userlog);
-    setBrokers(data.brokers);
+    setuserlog(toBooleanFlag(data?.userlog));
+    setBrokers(toObject(data?.brokers));
   };
 
   const sidebarClose = () => {
@@ -242,7 +258,7 @@ function AppContent() {
   };
 
   const changeUserTypeToAdmin = () => {
-    if (userProfile.admin) {
+    if (toBooleanFlag(userProfile.admin)) {
       localStorage.setItem("userType", "admin");
       window.open("/admin/dashboard", "_self");
       toast.success("User type changed to Admin");
@@ -326,40 +342,43 @@ function AppContent() {
                 </div>
               )}
             </div>
-            {userlog && (
+            {toBooleanFlag(userlog) ? (
               <div className="px-4 py-2 max-lg:px-2 max-lg:py-1 max-sm:text-[9px]   max-lg:text-[12px] bg-[#2cc12c] text-white rounded">
                 Verified
               </div>
-            )}
+            ) : null}
             <button
               onClick={handleLogout}
               className="px-4 py-2 max-lg:px-2 max-lg:py-1 bg-[#FF5733] max-sm:text-[9px]  max-lg:text-[12px] text-white rounded"
             >
               LOGOUT
               </button>
-            {userProfile.admin && (
+              {toBooleanFlag(userProfile?.admin) ? (
               <button
                 onClick={changeUserTypeToAdmin}
                 className="uppercase px-4 py-2 max-lg:px-2 max-lg:py-1 max-sm:text-[9px]   max-lg:text-[12px] bg-[#FF5733] text-white rounded"
               >
                 Go to Admin
               </button>
-            )}
+            ) : null}
           </div>
         </header>
       )}
       <div className="" onClick={sidebarClose}>
         {isAuthenticated && (
+          <ErrorBoundary name="Sidebar">
           <Sidebar
             userType={userType}
             isOpen={sidebarOpen}
             changeUserTypeToUser={changeUserTypeToUser}
             toggleSidebar={toggleSidebar}
           />
+          </ErrorBoundary>
         )}
         <ToastContainer />
 
         <div className={`${isAuthenticated && ""} lg:ml-64`}>
+          <ErrorBoundary name="Routes">
           <Routes>
             <Route
               path="/login"
@@ -534,6 +553,7 @@ function AppContent() {
               }
             />
           </Routes>
+          </ErrorBoundary>
         </div>
       </div>
       {showDeletePopup && (

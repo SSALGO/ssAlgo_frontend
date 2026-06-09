@@ -1,4 +1,5 @@
 import React from "react";
+import { displayValue } from "../../utils/displayValue";
 
 const TradesTable = ({ data, columns }) => {
   return (
@@ -35,9 +36,7 @@ const TradesTable = ({ data, columns }) => {
                         : "text-[#252F4A]"
                     }`}
                   >
-                    {row[column] !== undefined && row[column] !== null
-                      ? row[column]
-                      : ""}
+                    {displayValue(row[column])}
                   </span>
                 </td>
               ))}

@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { displayValue } from '../../utils/displayValue';
 
 export const tableFields = ['ooption', 'ostrike', 'oside', 'oexpiry', 'olot'];
 
@@ -85,7 +86,7 @@ const OptionGrid = ({
                         {field.options && field.options.map((option, index) => (
                             <option key={index} value={option.value}>
 
-                                {option.text}
+                {displayValue(option.text)}
                             </option>
                         ))}
                     </select>

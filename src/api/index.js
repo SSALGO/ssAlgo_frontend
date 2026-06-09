@@ -1,9 +1,17 @@
 import axiosInstance from './axiosInstance';
 import { getErrorMessage } from './errorHandler';
 
+const unwrapApiResponse = (payload) => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return payload;
+  }
 
+  if ('success' in payload && 'message' in payload) {
+    return payload;
+  }
 
-
+  return payload;
+};
 
 
 const transformToURLEncoded = (data) => {
@@ -49,7 +57,7 @@ export const fetchGetData = async (endpoint, params = {}, token = null) => {
     }
 
     const response = await axiosInstance.get(url, config);
-    return response.data;
+    return unwrapApiResponse(response.data);
   } catch (error) {
     const errorMessage = getErrorMessage(error);
     throw new Error(errorMessage);
@@ -73,7 +81,7 @@ export const fetchGetData = async (endpoint, params = {}, token = null) => {
       };
 
       const response = await axiosInstance.put(endpoint, formData, config);
-      return response.data;
+      return unwrapApiResponse(response.data);
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       throw new Error(errorMessage);
@@ -94,7 +102,7 @@ export const fetchGetData = async (endpoint, params = {}, token = null) => {
         }
 
         const response = await axiosInstance.post(endpoint, urlEncodedData, config);
-        return response.data;
+        return unwrapApiResponse(response.data);
     } catch (error) {
         const errorMessage = getErrorMessage(error);
         throw new Error(errorMessage);
@@ -113,7 +121,7 @@ export const postFormData = async (endpoint, formData, token = null) => {
           config.headers.Authorization = `Bearer ${token}`;
       }
       const response = await axiosInstance.post(endpoint, formData, config);
-      return response.data;
+      return unwrapApiResponse(response.data);
   } catch (error) {
       const errorMessage = getErrorMessage(error);
       throw new Error(errorMessage);
@@ -135,7 +143,7 @@ export const postFormData = async (endpoint, formData, token = null) => {
           }
 
         const response = await axiosInstance.delete(endpoint,config);
-      return response.data;
+      return unwrapApiResponse(response.data);
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       throw new Error(errorMessage);
@@ -149,7 +157,7 @@ export const postFormData = async (endpoint, formData, token = null) => {
       const formData = transformToFormData(data);
 
       const response = await axiosInstance.patch(endpoint, formData);
-      return response.data;
+      return unwrapApiResponse(response.data);
     } catch (error) {
 
       const errorMessage = getErrorMessage(error);

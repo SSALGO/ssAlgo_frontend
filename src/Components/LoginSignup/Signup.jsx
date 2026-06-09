@@ -41,10 +41,15 @@ const SignUp = ({ onSwitchToLogin }) => {
         // const response = await axiosiNSTANCE("API_REGISTER,FORMDATA, CONFIG")
        
         const response = await postData("api_register", formData);
-        // console.log(response)
-      const token = response.token; // Adjust based on the actual response structure
-      localStorage.setItem("token", token);
-      localStorage.setItem("accessToken", response.access_token);
+        const accessToken = response.access_token || response.token;
+        const username = response.username || formData.username;
+
+        if (!accessToken || !username) {
+          throw new Error("Invalid signup response from server");
+        }
+
+        localStorage.setItem("token", username);
+        localStorage.setItem("accessToken", accessToken);
       setTimeout(() => {
         window.location.reload();
       }, 0);

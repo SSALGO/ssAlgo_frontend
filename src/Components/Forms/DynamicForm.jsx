@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { displayValue } from '../../utils/displayValue';
 import { postData, fetchGetData, postFormData } from "../../api";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -14,7 +15,7 @@ const MultiSelect = ({ limit, value = [], onChange, name }) => {
     if (query.length >= 3) {
       try {
         const response = await fetchGetData(`api_searchsymbol?query=${query}`);
-        setOptions(response.results || []);
+        setOptions(response.data?.results || response.results || []);
       } catch (error) {
         console.error("Error fetching data:", error);
         setOptions([]);
@@ -72,7 +73,7 @@ const MultiSelect = ({ limit, value = [], onChange, name }) => {
                 }`}
                 onClick={() => handleSelect(option)}
               >
-                {option}
+                {displayValue(option)}
               </div>
             ))
           ) : (
@@ -96,7 +97,7 @@ const MultiSelect = ({ limit, value = [], onChange, name }) => {
                 key={v}
                 className="bg-blue-100 px-2 py-1 rounded-md text-sm flex items-center"
               >
-                {v}
+                {displayValue(v)}
                 <button
                   type="button"
                   className="ml-2 text-red-500 hover:text-red-700"
@@ -277,7 +278,7 @@ const DynamicForm = ({ formData = {}, onClose }) => {
           }>
             <option value="">Select an option</option>
             {field.options?.map((opt, idx) => (
-              <option key={idx} value={opt.value}>{opt.text}</option>
+              <option key={idx} value={opt.value}>{displayValue(opt.text)}</option>
             ))}
           </select>
         );
@@ -322,7 +323,7 @@ const DynamicForm = ({ formData = {}, onClose }) => {
               className={`mb-4 ${field.name?.endsWith('[]') || field.name === 'botname' ? 'md:col-span-2 lg:col-span-4' : ''}`}
             >
               <label htmlFor={field.name} className="uppercase text-sm font-medium text-gray-700 mb-1 block">
-                {capitalize(field.label)}
+                {displayValue(capitalize(field.label))}
               </label>
               {renderFormField(field)}
             </div>

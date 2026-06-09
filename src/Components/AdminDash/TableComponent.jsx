@@ -261,6 +261,7 @@
 import React, { useState } from "react";
 import PropTypes from "prop-types";
 import UpdateForm from "./UpdateForm";
+import { displayValue } from '../../utils/displayValue';
 
 const TableComponent = ({
   title,
@@ -472,7 +473,7 @@ const TableComponent = ({
                         key={colIndex}
                         className="px-5 max-lg:px-2 max-lg:py-2 py-3 max-md:text-[12px] whitespace-nowrap font-medium text-sm text-[#252F4A] text-wrap"
                       >
-                        {row[column.key]}
+                        {displayValue(row[column.key])}
                       </td>
                     ))}
                   </tr>

@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { displayValue } from '../../utils/displayValue';
 import { postData, fetchGetData, postFormData } from '../../api';
 import OptionGrid, { tableFields } from '../OptionGrid/OptionGrid';
 
@@ -13,7 +14,7 @@ const MultiSelect = ({ limit, value = [], onChange, name, disabled }) => {
     if (query.length >= 3) {
       try {
         const response = await fetchGetData(`api_searchsymbol?query=${query}`);
-        setOptions(response.results);
+        setOptions(response.data?.results || response.results || []);
       } catch (error) {
         console.error("Error fetching data:", error);
         setOptions([]);
@@ -78,7 +79,7 @@ const MultiSelect = ({ limit, value = [], onChange, name, disabled }) => {
                   }`}
                 onClick={() => handleSelect(option)}
               >
-                {option}
+                {displayValue(option)}
               </div>
             ))
           ) : (
@@ -97,7 +98,7 @@ const MultiSelect = ({ limit, value = [], onChange, name, disabled }) => {
           <div className="flex flex-wrap gap-1">
             {value.map(v => (
               <span key={v} className="bg-blue-100 px-1 py-0 rounded-md text-sm flex items-center">
-                {v}
+                {displayValue(v)}
                 {!disabled && (
                   <button
                     type="button"

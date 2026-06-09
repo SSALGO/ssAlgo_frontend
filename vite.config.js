@@ -11,6 +11,9 @@ export default defineConfig({
   server: {
     historyApiFallback: true,
   },
+  preview: {
+    allowedHosts: ['app.ssalgo.com'],
+  },
   build: {
     rollupOptions: {
       input: 'index.html',

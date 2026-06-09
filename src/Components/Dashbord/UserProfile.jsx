@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { postData } from '../../api';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { displayValue, getApiData, toBooleanFlag } from '../../utils/displayValue';
 
 const UserProfile = ({ user }) => {
   const tokens = localStorage.getItem("token");
@@ -25,12 +26,13 @@ const UserProfile = ({ user }) => {
     const fetchProfile = async () => {
       if (!tokens) return;
       const response = await postData("api_user_profile", { token: tokens });
-      if (response?.data) {
-        setUserProfile(response.data);
-        setToken(response.data.token || tokens);
-        setDayProfitLimit(response.data.day_profit_limit || '');
-        setDayLossLimit(response.data.day_loss_limit || '');
-        setTradeLimit(response.data.trade_limit || '');
+      const profile = getApiData(response);
+      if (profile && typeof profile === 'object' && !Array.isArray(profile)) {
+        setUserProfile(profile);
+        setToken(profile.token || tokens);
+        setDayProfitLimit(profile.day_profit_limit || '');
+        setDayLossLimit(profile.day_loss_limit || '');
+        setTradeLimit(profile.trade_limit || '');
       }
     };
     fetchProfile();
@@ -67,30 +69,30 @@ const UserProfile = ({ user }) => {
         <div className="space-y-4 px-5 max-md:px-1">
           <div className="flex items-center">
             <span className="w-32 font-medium text-[#79829E]">Username :</span>
-            <span className="text-[#252F4A] font-semibold">{userProfile.username}</span>
+            <span className="text-[#252F4A] font-semibold">{displayValue(userProfile.username)}</span>
           </div>
           <div className="flex items-center">
             <span className="w-32 font-medium text-[#79829E]">Email :</span>
             <div className="flex items-center font-semibold">
-              <span className="text-[#252F4A] font-semibold mr-1">{userProfile.email}</span>
-              {userProfile.isVerified && (
+              <span className="text-[#252F4A] font-semibold mr-1">{displayValue(userProfile.email)}</span>
+              {toBooleanFlag(userProfile.isVerified) ? (
                 <span className="bg-green-500 text-white text-sm font-semibold px-4 py-1 rounded-md">
                   Verified
                 </span>
-              )}
+              ) : null}
             </div>
           </div>
           <div className="flex items-center">
             <span className="w-32 font-medium text-[#79829E]">Mobile :</span>
-            <span className="text-[#252F4A] font-semibold">{userProfile.mobile}</span>
+            <span className="text-[#252F4A] font-semibold">{displayValue(userProfile.mobile)}</span>
           </div>
           <div className="flex items-center">
             <span className="w-32 font-medium text-[#79829E]">Subscription:</span>
-            <span className="text-[#252F4A] font-semibold">{userProfile.subtype}</span>
+            <span className="text-[#252F4A] font-semibold">{displayValue(userProfile.subtype)}</span>
           </div>
           <div className="flex items-center pb-6">
             <span className="w-32 font-medium text-[#79829E]">Expiry Date :</span>
-            <span className="text-[#252F4A] font-semibold">{userProfile.end}</span>
+            <span className="text-[#252F4A] font-semibold">{displayValue(userProfile.end)}</span>
           </div>
         </div>
       </div>

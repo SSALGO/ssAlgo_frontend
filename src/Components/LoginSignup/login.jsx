@@ -24,19 +24,25 @@ const Login = ({ onSwitchToSignup, onSwitchToForgotPassword }) => {
     setLoading(true);
     try {
       const response = await postData("api_login", formData);
-      // console.log("")
-      if (response.error) {
-        throw new Error(response.error); // Handle API errors explicitly
+      if (response.error || response.success === false) {
+        throw new Error(response.error || response.message || "Login failed");
       }
-      const token = response.token; // Adjust based on the actual response structure
-      toast.success("Login successful!");
-      // console.log(token)
-      localStorage.setItem("token", token);
-      localStorage.setItem("accessToken", response.access_token);
+
+      const accessToken = response.access_token || response.token;
+      const username = response.username;
+
+      if (!accessToken || !username) {
+        throw new Error("Invalid login response from server");
+      }
+
+      localStorage.removeItem("token");
+      localStorage.removeItem("accessToken");
+      localStorage.setItem("token", username);
+      localStorage.setItem("accessToken", accessToken);
       localStorage.setItem("userType", "user");
-      setTimeout(() => {
-        window.location.reload();
-      }, 0);
+
+      toast.success("Login successful!");
+      window.location.href = "/";
     } catch (error) {
       toast.error(`Login failed: ${error.message}`);
       // console.error("Login failed:", error.message);

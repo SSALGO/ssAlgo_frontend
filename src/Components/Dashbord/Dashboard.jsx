@@ -3,27 +3,41 @@ import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 import { postData } from "../../api";
-import io from "socket.io-client";
 import DeletePopup from "../PopUp/DeletePopup";
+import {
+  displayValue,
+  getApiData,
+  normalizeRecords,
+  toArray,
+  toBooleanFlag,
+  toObject,
+} from "../../utils/displayValue";
 
-import { ChevronDown, Import } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import DynamicForm from "../Forms/DynamicForm";
 import DynamicEditForm from "../Forms/DynamicEditForm";
 import ClipLoader from "react-spinners/ClipLoader";
 const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
   const [showEditForm, setShowEditForm] = useState(false);
-  const [connected, setConnected] = useState(false);
   const [strategies, setStrategies] = useState([]);
-  const [openPositions, setOpenPositions] = useState([
-
-  ]);
+  const [openPositions, setOpenPositions] = useState([]);
 
   // console.log(user)
 
   const [loading, setLoading] = useState(true);
 
-
+  const [strategyDropdown, setStrategyDropdown] = useState(false);
+  const [BrokerDropdown,setBrokerDropdown] = useState(false)
+  const [ShowDynamicForm, setShowDynamicForm] = useState(false);
+  const [userlog,setUserLog]=useState(false)
+  const [allStrategy,setAllStrategy]= useState({});
+  const [editData, setEditData] = useState({});
+  const [StrategyData, setStrategyData] = useState({});
+  const [showDeletePopup, setShowDeletePopup] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [expiryDate, setExpiryDate] = useState("")
+  const [brokers,setBrokers]=useState({})
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -31,91 +45,19 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
     window.location.reload();
   }
 
-
-  useEffect(() => {
-    // Connect to WebSocket server
-    const username = localStorage.getItem('token');
-    const socket = io(import.meta.env.VITE_API_BASE_URL || window.location.origin, {
-      auth: {
-        token: localStorage.getItem('accessToken')
-      },
-      query: {
-        username: username
-      }
-    }
-
-    );  // Use your backend URL here
-    //  const username = localStorage.getItem('token');?    // Handle connection event
-    socket.on('connect', () => {
-      setConnected(true);
-      console.log('Connected to WebSocket server');
-    });
-
-
-    socket.on('my_response', (msg) => {
-
-      if (msg && msg.position) {
-        try {
-          setUserLog(msg.userloggedin)
-          // console.log('Received positions data:', msg.userloggedin);
-          const positions = typeof msg.position === 'string' ? JSON.parse(msg.position) : msg.position;
-          setOpenPositions(positions);
-
-        } catch (e) {
-          console.error('Failed to parse positions data:', e);
-        }
-      }
-    });
-
-    // Handle disconnect event
-    socket.on('disconnect', () => {
-      setConnected(false);
-      console.log('Disconnected from WebSocket server');
-    });
-
-
-    return () => {
-      socket.disconnect();
-    };
-  }, []);
-
-  const [strategyDropdown, setStrategyDropdown] = useState(false);
-  // const [equityStrategyDropdown, setEquityStrategyDropdown] = useState(false);
-  const [BrokerDropdown,setBrokerDropdown] = useState(false)
-
-
-  const [ShowDynamicForm, setShowDynamicForm] = useState(false);
-
-
-  const [userlog,setUserLog]=useState(false)
-  const [allStrategy,setAllStrategy]= useState({});
-
-  const [editData, setEditData] = useState({});
-    const toggleStrategyDropdown = () => {
+  const toggleStrategyDropdown = () => {
     setStrategyDropdown(!strategyDropdown);
-    // setEquityStrategyDropdown(false);
   };
-  // const toggleEquityStrategyDropdown = () => {
-  //   setEquityStrategyDropdown(!equityStrategyDropdown);
-  //   setStrategyDropdown(false);
-  // };
+
   const toggleBrokerDropdown = () => {
     setBrokerDropdown(!BrokerDropdown)
   }
-  const [StrategyData, setStrategyData] = useState({});
-  const [showDeletePopup, setShowDeletePopup] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState(null);
-  const [expiryDate, setExpiryDate] = useState()
-  const [brokers,setBrokers]=useState({})
-
-
-
 
   useEffect(() => {
     fetchIndex();
-    // fetchdata();
   }, []);
- const exitPosition = async (id) => {
+
+  const exitPosition = async (id) => {
    const token = localStorage.getItem("token");
    const response = await postData("api_delete_oposition", { position_time: id, token });
  }
@@ -123,20 +65,21 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
     try {
       const token = localStorage.getItem("token");
       const response = await postData("api_index", { token });
+      const indexData = getApiData(response) || {};
       setLoading(false);
-      // console.log("dashborad reponse from index",response);
-      setStrategies(response.data.strategy);
-      // console.log("strategies",strategies)
-      headerData(response.data)
-      // setUserLog(response.data.userlog)
-      setExpiryDate(response.data.user_expiry)
-      setBrokers(response.data.brokers)
-      setAllStrategy(response.data.allstrategies)
+      setStrategies(normalizeRecords(indexData.strategy));
+      setOpenPositions(normalizeRecords(indexData.opositions));
+      setUserLog(toBooleanFlag(indexData.userlog));
+      headerData(indexData);
+      setExpiryDate(displayValue(indexData.user_expiry));
+      setBrokers(toObject(indexData.brokers));
+      setAllStrategy(toObject(indexData.allstrategies));
       // console.log("all strategy",allStrategy)
       // console.log("admin broker data",brokers)
 
     } catch (error) {
       console.error("Error fetching APIs:", error);
+      setLoading(false);
     }
   };
 
@@ -285,7 +228,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
     if (row.status === "paused") {
       return (
         <>
-          {expiryDate > today_date &&
+          {Boolean(expiryDate && expiryDate > today_date) && (
          <button
          onClick={() => handleStartClick(row.botcode)}
          className="uppercase  pr-5 max-lg:pr-5  max-lg:px-2 gap-2 max-md:text-[12px]  font-bold text-sm py-1 bg-[#43C64C] text-white rounded hover:bg-green-600 flex  items-center"
@@ -293,7 +236,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
          <img src="play1.png" alt="play" className="h-3 pl-2 " />
          Start
        </button>
-         }
+          )}
 
           <button
             onClick={() => OnModify(row)}
@@ -332,6 +275,14 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
       );
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <ClipLoader loading={loading} size={150} aria-label="Loading Spinner" data-testid="loader" />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -462,7 +413,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
           <div className="  flex space-x-4 max-lg:hidden">
            <div>
-            {!userlog &&
+            {!toBooleanFlag(userlog) &&
             ( <button onClick={toggleBrokerDropdown} className="px-4 py-2 border text-[#FF5733] border-[#FF5733] rounded hover:bg-blue-100">
               LOGIN WITH  YOUR  BROKER
           </button>)}
@@ -483,43 +434,35 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
                 </div>
               )}
             </div>
-            {userlog && (
+            {toBooleanFlag(userlog) ? (
 
 
               <div className="px-4 py-2 max-lg:px-2 max-lg:py-1   max-lg:text-[12px] bg-[#2cc12c] text-white rounded">
                 VERIFIED
                 {/* {console.log("userlog in header", userlog)} */}
               </div>
-             )}
+             ) : null}
              <button
               onClick={handleLogout}
               className="px-4 py-2 bg-[#FF5733] text-white rounded"
             >
               LOGOUT
               </button>
-            { user.admin &&
+            {toBooleanFlag(user?.admin) ? (
             <button
               onClick={changeUserTypeToAdmin}
               className="px-4 py-2 bg-[#FF5733] text-white rounded"
             >
               GO TO ADMIN
               </button>
-             }
+             ) : null}
           </div>
         </nav>
       </header>
 
 
 
-      {loading ? (
-        <div onClick={closeDropdown} className="flex justify-center items-center h-screen"> <ClipLoader
-
-        loading={loading}
-
-        size={150}
-        aria-label="Loading Spinner"
-        data-testid="loader"
-      /></div>): (<div
+      <div
         onClick={closeDropdown}
         className="  py-4 px-6  max-lg:px-3  w-full "
       >
@@ -554,7 +497,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
                         {strategy.time}
                       </td> */}
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        {strategy.botname}
+                        {displayValue(strategy.botname)}
                       </td>
                       {/* <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
                         {strategy.strategy}
@@ -566,23 +509,23 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
   {Array.isArray(strategy['symbol[]']) ? (
     <select className="border border-gray-300 rounded px-2 py-1">
      {strategy['symbol[]'].map((item, idx) => (
-  <option key={`${item}-${idx}`} value={item}>
-    {item}
+  <option key={`${displayValue(item)}-${idx}`} value={displayValue(item)}>
+    {displayValue(item)}
   </option>
 ))}
     </select>
   ) : (
-    strategy.symbol
+    displayValue(strategy.symbol)
   )}
 </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        {strategy.timeframe}
+                        {displayValue(strategy.timeframe)}
                       </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        {strategy.live?"Live":"Paper"}
+                        {strategy.live ? "Live" : "Paper"}
                       </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        {strategy.lot}
+                        {displayValue(strategy.lot)}
                       </td>
                       <td className="px-5 py-3 whitespace-nowrap text-sm text-[#252F4A] text-wrap">
                         {strategy.Intraday?"IntraDay":"Positional"}
@@ -641,16 +584,16 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
                             : "text-[#EE2358]"
                         } font-bold`}
                       >
-                        {position.pnl}
+                        {displayValue(position.pnl)}
                       </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                      { new Date(position.time * 1000).toLocaleTimeString()}
+                      {position.time ? new Date(position.time * 1000).toLocaleTimeString() : ''}
                       </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        {position.botname}
+                        {displayValue(position.botname)}
                       </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        {position.optionname}
+                        {displayValue(position.optionname)}
                       </td>
                       {/* <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
                         {position.optionexit}
@@ -662,10 +605,10 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
                         {position.live ? "Live" : "Paper"}
                       </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        {position.lot}
+                        {displayValue(position.lot)}
                       </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        {position.side}
+                        {displayValue(position.side)}
                       </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
                         { position.BSmode ? "Buy" : "Sell"}
@@ -703,7 +646,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
             data="Startegy"
           />
         )}
-      </div>)}
+      </div>
 
 
     </>
