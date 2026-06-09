@@ -3,15 +3,27 @@ export const displayValue = (value) => {
     return '';
   }
 
+  if (value instanceof Error) {
+    return value.message;
+  }
+
   if (typeof value === 'object') {
     if (Array.isArray(value)) {
       return value.map((item) => displayValue(item)).filter(Boolean).join(', ');
     }
 
-    return JSON.stringify(value);
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
   }
 
-  return value;
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+
+  return String(value);
 };
 
 export const toBooleanFlag = (value) => {

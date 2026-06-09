@@ -13,6 +13,12 @@ const unwrapApiResponse = (payload) => {
   return payload;
 };
 
+const getFastApiBaseURL = () => (
+  import.meta.env.VITE_FASTAPI_BASE_URL
+  || import.meta.env.VITE_API_BASE_URL
+  || '/'
+);
+
 
 const transformToURLEncoded = (data) => {
   const urlEncodedData = new URLSearchParams();
@@ -107,6 +113,68 @@ export const fetchGetData = async (endpoint, params = {}, token = null) => {
         const errorMessage = getErrorMessage(error);
         throw new Error(errorMessage);
     }
+};
+
+export const fetchFastApiGetData = async (endpoint, params = {}, token = null) => {
+  try {
+    const queryString = new URLSearchParams(params).toString();
+    const url = queryString ? `${endpoint}?${queryString}` : endpoint;
+    const config = {
+      baseURL: getFastApiBaseURL(),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    const response = await axiosInstance.get(url, config);
+    return response.data;
+  } catch (error) {
+    const errorMessage = getErrorMessage(error);
+    throw new Error(errorMessage);
+  }
+};
+
+export const postJsonData = async (endpoint, data = {}, token = null) => {
+  try {
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
+
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await axiosInstance.post(endpoint, data, config);
+    return response.data;
+  } catch (error) {
+    const errorMessage = getErrorMessage(error);
+    throw new Error(errorMessage);
+  }
+};
+
+export const postFastApiJsonData = async (endpoint, data = {}, token = null) => {
+  try {
+    const config = {
+      baseURL: getFastApiBaseURL(),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
+
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await axiosInstance.post(endpoint, data, config);
+    return response.data;
+  } catch (error) {
+    const errorMessage = getErrorMessage(error);
+    throw new Error(errorMessage);
+  }
 };
 
 
