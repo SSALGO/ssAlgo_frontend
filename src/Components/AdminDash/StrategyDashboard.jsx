@@ -4,7 +4,7 @@ import StrategyTable from './StrategyTable'; // Updated import path
 import { postData } from '../../api';
 import DeletePopup from "../PopUp/DeletePopup"
 import DynamicEditForm from '../Forms/DynamicEditForm';
-import ClipLoader from "react-spinners/ClipLoader";
+import LoadingSpinner from "../LoadingSpinner";
 
 const StrategyDashboard = () => {
   const [data, setData] = useState([]);
@@ -119,9 +119,7 @@ const captitalLater=function(str) {
           />
 
           {loading ? (
-            <div className="flex justify-center items-center h-screen">
-              <ClipLoader loading={loading} size={150} aria-label="Loading Spinner" data-testid="loader" />
-            </div>
+            <LoadingSpinner label="Loading strategies..." />
           ) : (
             <StrategyTable
               data={filteredData}

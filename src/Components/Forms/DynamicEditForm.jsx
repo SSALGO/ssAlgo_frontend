@@ -256,7 +256,9 @@ const DynamicEditForm = ({ formData = {}, onClose }) => {
         return (
           <select {...commonProps}>
             {field.options?.map((option, i) => (
-              <option key={i} value={option.value}>{option.text}</option>
+              <option key={i} value={displayValue(option.value)}>
+                {displayValue(option.text)}
+              </option>
             ))}
           </select>
         );
@@ -291,7 +293,7 @@ const DynamicEditForm = ({ formData = {}, onClose }) => {
               className={`mb-4 ${field?.name?.endsWith('[]') || field.name === 'botname' ? 'md:col-span-2 lg:col-span-4' : ''}`}
             >
               <label htmlFor={field.name} className="uppercase block text-sm font-medium text-gray-700 mb-1">
-                {capitalize(field.label)}
+                {displayValue(capitalize(field.label))}
               </label>
               <div className={field?.name?.endsWith('[]') ? 'mt-1' : ''}>
                 {renderFormField(field)}

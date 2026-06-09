@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { toast, ToastContainer } from "react-toastify";
+import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 import { postData } from "../../api";
@@ -16,7 +16,7 @@ import {
 import { ChevronDown } from "lucide-react";
 import DynamicForm from "../Forms/DynamicForm";
 import DynamicEditForm from "../Forms/DynamicEditForm";
-import ClipLoader from "react-spinners/ClipLoader";
+import LoadingSpinner from "../LoadingSpinner";
 const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
   const [showEditForm, setShowEditForm] = useState(false);
@@ -277,17 +277,11 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
   };
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <ClipLoader loading={loading} size={150} aria-label="Loading Spinner" data-testid="loader" />
-      </div>
-    );
+    return <LoadingSpinner label="Loading dashboard..." />;
   }
 
   return (
     <>
-          <ToastContainer />
-
       <header className="relative z-50 max-lg:pt-16">
         <nav className="relative z-50 flex justify-between items-center py-4 px-6 max-lg:px-3">
           <div className="flex space-x-8 relative z-50">

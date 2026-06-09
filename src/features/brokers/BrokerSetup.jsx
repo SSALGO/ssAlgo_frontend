@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { fetchFastApiGetData, postFastApiJsonData } from "../../api";
-import { toast, ToastContainer } from "react-toastify";
+import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import {
   displayValue,
@@ -209,7 +209,6 @@ const BrokerSetup = () => {
 
   return (
     <div className="mx-auto w-full px-6 py-4 uppercase max-lg:px-3">
-    <ToastContainer />
     <div className="mb-4 flex items-center justify-between">
   <h1 className="text-2xl font-bold">Edit Broker API</h1>
   {activeBroker && (
