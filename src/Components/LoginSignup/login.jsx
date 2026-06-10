@@ -6,21 +6,26 @@ import React, { useState } from "react";
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { postData } from '../../api';
-import { useNavigate } from "react-router-dom"; // Corrected import for useNavigate
+import { InlineError } from "../../shared/components/TradingUi";
 
 const Login = ({ onSwitchToSignup, onSwitchToForgotPassword }) => {
   const [formData, setFormData] = useState({ username: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-
-  const navigate = useNavigate(); // Corrected to useNavigate
+  const [errors, setErrors] = useState({});
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    setErrors((prev) => ({ ...prev, [e.target.name]: "" }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const nextErrors = {};
+    if (!formData.username.trim()) nextErrors.username = "Email or username is required.";
+    if (!formData.password) nextErrors.password = "Password is required.";
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
     setLoading(true);
     try {
       const response = await postData("api_login", formData);
@@ -67,7 +72,7 @@ const Login = ({ onSwitchToSignup, onSwitchToForgotPassword }) => {
       </div>
       <div className="mb-4">
         <div className="flex gap-2 mb-2 max-sm:hidden">
-          <img src="user.svg" alt="" />
+          <img src="user.svg" alt="User" />
           <p className="block text-sm font-medium mb-1 text-[#252F4A] ">Email/Username</p>
         </div>
         <div className="relative">
@@ -81,12 +86,13 @@ const Login = ({ onSwitchToSignup, onSwitchToForgotPassword }) => {
             disabled={loading}
             required
           />
+          <InlineError message={errors.username} />
          
         </div>
       </div>
       <div className="mb-3">
         <div className="flex gap-2 mb-2 pl-1 items-center max-sm:hidden">
-          <img src="pass.svg" alt="" />
+          <img src="pass.svg" alt="Password" />
           <p className="block text-sm font-medium mb-2 text-[#252F4A]">Password</p>
         </div>
         <div className="relative">
@@ -107,12 +113,13 @@ const Login = ({ onSwitchToSignup, onSwitchToForgotPassword }) => {
           >
             {showPassword ? (
               <img className="w-5 h-5"
-               src="eye1.png" alt="" />
+               src="eye1.png" alt="Hide password" />
             ) : (
               <img className="w-5 h-5"
-               src="eye1-off.png" alt="" />
+               src="eye1-off.png" alt="Show password" />
             )}
           </button>
+          <InlineError message={errors.password} />
         </div>
         
       </div>

@@ -16,13 +16,13 @@ const AuthPage = () => {
   const handleSwitchToForgotPassword = () => setCurrentPage("forgetPassword");
 
   return (
-    <div className="h-screen w-full lg:flex gap-10 align-middle   ">
+    <div className="min-h-screen w-full gap-10 overflow-y-auto lg:flex lg:items-stretch">
       {/* {currentPage !== "forgetPassword" && ( */}
-        <div className="m-3 bg-black lg:-ml-60  rounded-md lg:w-2/3">
+        <div className="m-3 bg-black rounded-md lg:-ml-60 lg:w-2/3">
           <img
-            className="lg:h-full w-full object-fill  rounded-md max-sm:h-[300px] max-lg:object-fill    max-lg:h-[720px]"
+            className="h-56 w-full rounded-md object-cover sm:h-72 lg:h-full"
             src="authImg.png"
-            alt="Auth"
+            alt="SSALGO trading platform"
           />
         </div>
       {/* )} */}
@@ -43,7 +43,7 @@ const AuthPage = () => {
         {currentPage !== "forgetPassword" && (
           <div className="mt-auto mx-auto text-center">
               <button className="w-full mt-5 mb-8 py-2 h-[50px] lg:w-[150px] bg-[#FF5733] text-white font-semibold rounded-md hover:bg-orange-700 text-sm"><a href="https://www.ssalgo.com/">Visit Our Website</a></button>
-            <div className="mt-auto flex items-center px-2 text-[11px] sm:text-sm gap-3 text-nowrap">
+            <div className="mt-auto flex flex-wrap items-center justify-center px-2 text-[11px] sm:text-sm gap-3">
               <a href="https://www.ssalgo.com/privacy-policy.html"><p className="text-[#252F4A] font-medium underline">
               Privacy Policy
               </p></a>

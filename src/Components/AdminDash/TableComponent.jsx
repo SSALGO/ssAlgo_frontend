@@ -262,6 +262,7 @@ import React, { useState } from "react";
 import PropTypes from "prop-types";
 import UpdateForm from "./UpdateForm";
 import { displayValue } from '../../utils/displayValue';
+import { EmptyState, StatusBadge } from "../../shared/components/TradingUi";
 
 const TableComponent = ({
   title,
@@ -276,6 +277,8 @@ const TableComponent = ({
   const [selectedRow, setSelectedRow] = useState(null);
   const [isEditing, setIsEditing] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 10;
 
   const handleUpdateClick = (row) => {
     setIsEditing(title);
@@ -386,9 +389,18 @@ const TableComponent = ({
 
   const filteredData = data.filter((row) =>
     columns.some((column) =>
-      String(row[column.key]).toLowerCase().includes(searchQuery.toLowerCase())
+      String(row[column.key] ?? "").toLowerCase().includes(searchQuery.toLowerCase())
     )
   );
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / rowsPerPage));
+  const currentRows = filteredData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+  const maskIfSecret = (column, value) => {
+    const key = String(column.key || "").toLowerCase();
+    if (key.includes("secret") || key.includes("apikey") || key.includes("token")) {
+      return value ? "********" : "";
+    }
+    return displayValue(value);
+  };
 
   return (
     <div className="mx-auto py-4 px-6 max-lg:px-3">
@@ -422,6 +434,28 @@ const TableComponent = ({
             />
           </div>
 
+          <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs font-bold text-[#79829E]">Rows</p>
+              <p className="text-xl font-bold text-[#0A1438]">{filteredData.length}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs font-bold text-[#79829E]">User status</p>
+              <StatusBadge value="Visible in table" tone="ready" />
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs font-bold text-[#79829E]">Broker status</p>
+              <StatusBadge value="API placeholder" tone="warning" />
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs font-bold text-[#79829E]">Audit actions</p>
+              <StatusBadge value="API not ready" tone="warning" />
+            </div>
+          </div>
+
+          {currentRows.length === 0 ? (
+            <EmptyState title="No rows found" description="Adjust the search filter or wait for admin API data to load." />
+          ) : (
           <div className="bg-white rounded-lg overflow-x-auto">
             <table className="w-full border-2">
               <thead>
@@ -440,7 +474,7 @@ const TableComponent = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-dashed">
-                {filteredData.map((row, rowIndex) => (
+                {currentRows.map((row, rowIndex) => (
                   <tr key={rowIndex}>
                     <td className="px-5 max-lg:px-2 max-lg:py-2 py-3 whitespace-nowrap text-sm max-sm:text-[12px] font-medium">
                       {onEdit && (
@@ -473,13 +507,26 @@ const TableComponent = ({
                         key={colIndex}
                         className="px-5 max-lg:px-2 max-lg:py-2 py-3 max-md:text-[12px] whitespace-nowrap font-medium text-sm text-[#252F4A] text-wrap"
                       >
-                        {displayValue(row[column.key])}
+                        {maskIfSecret(column, row[column.key])}
                       </td>
                     ))}
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+          )}
+
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm normal-case text-[#4B5675]">Page {currentPage} of {totalPages}</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1} className="rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-50">
+                Previous
+              </button>
+              <button type="button" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages} className="rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-50">
+                Next
+              </button>
+            </div>
           </div>
         </div>
       )}

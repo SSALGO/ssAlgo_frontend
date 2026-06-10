@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { postData } from "../../api";
 import EditStrategyInput from "./EditStrategyInput";
+import { EmptyState, ErrorState, LoadingState, MetricCard, StatusBadge } from "../../shared/components/TradingUi";
 
 // Move the controlDashboardData and strategyInputData declarations above the state initialization
 const controlDashboardData = [
@@ -14,6 +15,8 @@ const AdminDashboard = () => {
   const [showEdit, setShowEdit] = useState(false);
   const [strategyInputData, setStrategyInputData] = useState([]);
   const [editdata, setEditData] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   // Initialize states using the above data
   const [controlStates, setControlStates] = useState(
@@ -24,11 +27,18 @@ const AdminDashboard = () => {
   );
 
   const fetchAdminData = async () => {
-    const token = localStorage.getItem("token");
-    const response = await postData("api_admin", { token });
-    //  console.log("admin data",response.data.strategyco)
-    setStrategyInputData(response.data.strategyco);
-    // console.log(response);
+    try {
+      setLoading(true);
+      setError("");
+      const token = localStorage.getItem("token");
+      const response = await postData("api_admin", { token });
+      setStrategyInputData(Array.isArray(response?.data?.strategyco) ? response.data.strategyco : []);
+    } catch (fetchError) {
+      setError(fetchError.message || "Unable to load admin dashboard.");
+      setStrategyInputData([]);
+    } finally {
+      setLoading(false);
+    }
   };
   const closeEdit = () => {
     setShowEdit(false);
@@ -197,7 +207,7 @@ const AdminDashboard = () => {
       {showEdit ? (
         <EditStrategyInput editdata={editdata} closeEdit={closeEdit} />
       ) : (
-        <div className="uppercase  w-full  px-6 max-lg:px-3 py-4  ">
+        <div className="uppercase w-full px-6 max-lg:px-3 py-4">
           <h1 className="text-2xl font-bold text-[#0A1438] max-lg:mt-14">
             Admin Dashboard
           </h1>
@@ -206,7 +216,23 @@ const AdminDashboard = () => {
             real-time.
           </p>
 
-          <div className="flex-1 ">
+          <div className="my-5 grid grid-cols-1 gap-4 md:grid-cols-4">
+            <MetricCard label="Users" value="API placeholder" status="warning" />
+            <MetricCard label="Subscriptions" value="API placeholder" status="warning" />
+            <MetricCard label="Broker status" value="API placeholder" status="warning" />
+            <MetricCard label="Strategy count" value={strategyInputData.length} status={strategyInputData.length ? "active" : "paused"} />
+          </div>
+
+          <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs font-bold text-[#79829E]">Audit log</p><StatusBadge value="API not ready" tone="warning" /></div>
+            <div className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs font-bold text-[#79829E]">Risk review</p><StatusBadge value="API not ready" tone="warning" /></div>
+            <div className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs font-bold text-[#79829E]">Admin actions</p><StatusBadge value="Manual controls only" tone="ready" /></div>
+          </div>
+
+          {loading ? <LoadingState label="Loading admin dashboard..." /> : null}
+          {error ? <ErrorState message={error} onRetry={fetchAdminData} /> : null}
+
+          {!loading && !error ? <div className="flex-1">
             <h2 className="text-2xl font-bold mt-3 mb-6 text-[#0A1438]">
               Control Dashboard
             </h2>
@@ -372,9 +398,10 @@ const AdminDashboard = () => {
                     ))}
                   </tbody>
                 </table>
+                {strategyInputData.length === 0 ? <div className="p-4"><EmptyState title="No strategy inputs found" description="Admin strategy rows will appear when the backend returns strategy control data." /></div> : null}
               </div>
             </div>
-          </div>
+          </div> : null}
         </div>
       )}
     </>

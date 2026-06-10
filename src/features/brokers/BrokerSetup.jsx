@@ -7,6 +7,9 @@ import {
   toArray,
   toObject,
 } from "../../utils/displayValue";
+import { ErrorState, LoadingState, StatusBadge } from "../../shared/components/TradingUi";
+
+const MASKED_SECRET_VALUE = "********";
 
 const BrokerSetup = () => {
   const [brokerList, setBrokerList] = useState([]);
@@ -17,8 +20,10 @@ const BrokerSetup = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [activeBroker, setActiveBroker] = useState("");
   const [brokerHealth, setBrokerHealth] = useState([]);
+  const [savedCredentials, setSavedCredentials] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [isTesting, setIsTesting] = useState(false);
 
   const accessToken = localStorage.getItem("accessToken");
 
@@ -33,6 +38,7 @@ const BrokerSetup = () => {
           broker_requirements = {},
           broker_actions = {},
           broker_status = {},
+          saved_credentials = {},
           current_broker,
         } = response.data;
 
@@ -53,6 +59,7 @@ const BrokerSetup = () => {
         }));
 
         setBrokerList(brokers);
+        setSavedCredentials(toObject(saved_credentials));
         setActiveBroker(displayValue(current_broker));
 
         const active = brokers.find((b) => b.key === current_broker);
@@ -85,14 +92,70 @@ const BrokerSetup = () => {
     }
   };
 
+  const isSecretField = (field = {}) => {
+    const normalized = toObject(field);
+    const id = displayValue(normalized.id).toLowerCase();
+    const type = displayValue(normalized.type).toLowerCase();
+    return (
+      type === "password"
+      || id.includes("secret")
+      || id.includes("token")
+      || id.includes("password")
+      || id.includes("auth_code")
+      || id.includes("totp")
+      || id.includes("factor2")
+      || id.includes("session")
+      || id === "pin"
+      || id === "pwd"
+      || id === "apisecret"
+    );
+  };
+
+  const applySavedBrokerData = (brokerKey, requirements = [], source = savedCredentials) => {
+    const saved = toObject(source[brokerKey]);
+    if (!Object.keys(saved).length) {
+      initializeEmptyFields(requirements);
+      return false;
+    }
+
+    const secretPresent = toObject(saved.secret_present);
+    const values = {};
+    toArray(requirements).forEach((field) => {
+      const normalizedField = toObject(field);
+      const fieldId = displayValue(normalizedField.id);
+      if (!fieldId) return;
+      if (isSecretField(normalizedField)) {
+        values[fieldId] = secretPresent[fieldId] || saved[fieldId] ? MASKED_SECRET_VALUE : "";
+      } else {
+        values[fieldId] = displayValue(saved[fieldId] ?? normalizedField.default_value);
+      }
+    });
+
+    setSavedApiId(displayValue(saved._id || saved.id));
+    setFieldValues(values);
+    return true;
+  };
+
   const fetchSavedBrokerData = async (brokerKey, requirements = []) => {
+    if (applySavedBrokerData(brokerKey, requirements)) {
+      return;
+    }
+
     try {
       const response = await fetchFastApiGetData(`api/brokers/${brokerKey}/credentials`, {}, accessToken);
 
       if (response?.success && response.data) {
         const { _id, ...fields } = toObject(response.data);
         setSavedApiId(displayValue(_id));
-        setFieldValues(toObject(fields.values ?? fields));
+        const savedValues = toObject(fields.values ?? fields);
+        const maskedValues = { ...savedValues };
+        toArray(requirements).forEach((field) => {
+          const fieldId = displayValue(toObject(field).id);
+          if (fieldId && isSecretField(field) && savedValues[fieldId]) {
+            maskedValues[fieldId] = MASKED_SECRET_VALUE;
+          }
+        });
+        setFieldValues(maskedValues);
       } else {
         initializeEmptyFields(requirements);
       }
@@ -129,7 +192,7 @@ const BrokerSetup = () => {
         fetchSavedBrokerData(selectedBroker, selected.requirements);
       }
     }
-  }, [selectedBroker, brokerList]);
+  }, [selectedBroker, brokerList, savedCredentials]);
 
   const handleBrokerSelect = (e) => {
     setSelectedBroker(e.target.value);
@@ -149,8 +212,16 @@ const BrokerSetup = () => {
     }
 
     try {
+      const valuesToSave = { ...fieldValues };
+      brokerFields.forEach((field) => {
+        const fieldId = displayValue(toObject(field).id);
+        if (savedApiId && isSecretField(field) && (!valuesToSave[fieldId] || valuesToSave[fieldId] === MASKED_SECRET_VALUE)) {
+          delete valuesToSave[fieldId];
+        }
+      });
+
       const response = await postFastApiJsonData(`api/brokers/${selectedBroker}/credentials`, {
-        values: fieldValues,
+        values: valuesToSave,
         activate: true,
       }, accessToken);
 
@@ -176,8 +247,22 @@ const BrokerSetup = () => {
     return active ? active.name : "";
   };
 
+  const handleTestConnection = async () => {
+    setIsTesting(true);
+    try {
+      await fetchBrokerHealth();
+      toast.success("Broker status refreshed.");
+    } catch (error) {
+      toast.error(error.message || "Unable to test broker connection.");
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
   const selectedBrokerMeta = brokerList.find((broker) => broker.key === selectedBroker);
   const selectedHealth = brokerHealth.find((health) => health?.broker === selectedBroker);
+  const selectedSavedCredentials = toObject(savedCredentials[selectedBroker]);
+  const hasSavedCredentials = Object.keys(selectedSavedCredentials).length > 0 || Boolean(savedApiId);
 
   const statusClass = (value) => {
     const normalized = String(value || "").toLowerCase();
@@ -200,11 +285,7 @@ const BrokerSetup = () => {
   );
 
   if (isLoading) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center px-6 py-4 text-gray-600">
-        Loading broker settings...
-      </div>
-    );
+    return <div className="px-6 py-4"><LoadingState label="Loading broker settings..." /></div>;
   }
 
   return (
@@ -231,7 +312,7 @@ const BrokerSetup = () => {
       <div className="rounded border border-gray-200 p-3">
         <p className="text-xs font-semibold text-gray-500">Credentials</p>
         <p className="mt-1 text-lg font-bold normal-case">
-          {selectedHealth?.missing_credentials?.length ? "Missing fields" : "Ready"}
+          {selectedHealth?.missing_credentials?.length ? "Missing fields" : hasSavedCredentials ? "Saved" : "Ready"}
         </p>
       </div>
       <div className="rounded border border-gray-200 p-3">
@@ -248,11 +329,7 @@ const BrokerSetup = () => {
       </div>
     </div>
 
-    {loadError && (
-      <div className="mb-5 rounded border border-red-200 bg-red-50 px-4 py-3 normal-case text-red-700">
-        {loadError}
-      </div>
-    )}
+    {loadError && <div className="mb-5"><ErrorState message={loadError} onRetry={fetchBrokerList} /></div>}
 
     <div className="mb-4">
       <label className="block text-sm font-medium mb-1">Select Broker</label>
@@ -275,9 +352,13 @@ const BrokerSetup = () => {
     </div>
 
     {selectedBroker && (
-      <p className="mb-4 text-sm normal-case text-gray-600">
-        {displayValue(selectedBrokerMeta?.status?.notes)}
-      </p>
+      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 normal-case text-sm text-amber-900">
+        <p className="font-bold">Credential risk</p>
+        <p className="mt-1">
+          Broker credentials can permit account access and order placement. Saved secret fields are shown as filled masks; type a new value only when you want to replace one.
+        </p>
+        {displayValue(selectedBrokerMeta?.status?.notes) ? <p className="mt-2">{displayValue(selectedBrokerMeta?.status?.notes)}</p> : null}
+      </div>
     )}
 
     {selectedBroker && (
@@ -308,29 +389,47 @@ const BrokerSetup = () => {
       const normalizedField = toObject(field);
       const fieldId = displayValue(normalizedField.id);
       const inputType = displayValue(normalizedField.type) || "text";
+      const secret = isSecretField(normalizedField);
 
       return (
       <div key={fieldId || index} className="mb-4">
         <label className="block text-sm font-medium mb-1">{displayValue(normalizedField.label) || fieldId}</label>
         <input
-          type={inputType}
+          type={secret ? "password" : inputType}
           value={displayValue(fieldValues[fieldId])}
           onChange={(e) => handleInputChange(fieldId, e.target.value)}
-          autoComplete={inputType === "password" ? "current-password" : "off"}
+          autoComplete={secret ? "new-password" : "off"}
+          placeholder={secret && savedApiId ? "Saved - enter a new value to replace" : ""}
           disabled={!fieldId}
           className="border border-gray-300 px-4 py-2 rounded w-full"
         />
+        {secret && savedApiId ? (
+          <p className="mt-1 text-xs normal-case text-[#4B5675]">Saved value is present. Keep the mask to leave it unchanged.</p>
+        ) : null}
       </div>
       );
     })}
 
-    <button
-      onClick={handleSave}
-      disabled={isSaving || !selectedBroker}
-      className="bg-[#FF5733] uppercase mt-5 max-lg:mt-3 text-white py-2 px-4 rounded-md font-semibold hover:bg-orange-600 transition duration-300 disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      {isSaving ? "Saving..." : "Save Credentials"}
-    </button>
+    <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+      <button
+        onClick={handleSave}
+        disabled={isSaving || !selectedBroker}
+        className="bg-[#FF5733] uppercase max-lg:mt-3 text-white py-2 px-4 rounded-md font-semibold hover:bg-orange-600 transition duration-300 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {isSaving ? "Saving..." : "Save Credentials"}
+      </button>
+      <button
+        type="button"
+        onClick={handleTestConnection}
+        disabled={isTesting || !selectedBroker}
+        className="rounded-md border border-[#FF5733] px-4 py-2 font-semibold text-[#FF5733] hover:bg-[#FFF0EC] disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {isTesting ? "Testing..." : "Test Connection"}
+      </button>
+      <div className="flex items-center">
+        <StatusBadge value={selectedHealth?.last_error ? "Error" : selectedHealth?.login_status || "Not connected"} tone={selectedHealth?.last_error ? "error" : undefined} />
+      </div>
+    </div>
   </div>
   );
 };

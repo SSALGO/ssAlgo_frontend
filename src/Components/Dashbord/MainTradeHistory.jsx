@@ -1,13 +1,13 @@
 
 
 
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import TradesTable from './TradeTable';
 import { fetchGetData } from '../../api/index';
+import { EmptyState, ErrorState, ExportButton, LoadingState } from '../../shared/components/TradingUi';
 
 const MainTradeHistory = () => {
   const [trades, setTrades] = useState([]);
-  const [filteredTrades, setFilteredTrades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -16,6 +16,7 @@ const getFormattedDate = (date) => {
 };
 
 const [filterDate, setFilterDate] = useState(getFormattedDate(new Date()));
+const [filters, setFilters] = useState({ strategy: '', symbol: '', status: '', mode: '' });
   
   async function fetchMainHistory(date) {
     const queryString = date ? `?date=${date}` : '';
@@ -25,11 +26,9 @@ const [filterDate, setFilterDate] = useState(getFormattedDate(new Date()));
       const response = await fetchGetData(`api_mainhistoricalbacktest${queryString}`);
       const history = Array.isArray(response?.data?.history) ? response.data.history : [];
       setTrades(history);
-      setFilteredTrades(history);
     } catch (fetchError) {
       console.error('Error fetching main trade history:', fetchError);
       setTrades([]);
-      setFilteredTrades([]);
       setError(fetchError.message || 'Unable to load main trade history.');
     } finally {
       setLoading(false);
@@ -49,49 +48,78 @@ const [filterDate, setFilterDate] = useState(getFormattedDate(new Date()));
     (col) => !['botcode', 'user', 'decision', 'optiontoken', 'symbol', 'time','live','BSmode'].includes(col)
   );
 
+  const filteredRows = useMemo(() => trades.filter((trade) => {
+    const read = (key) => String(trade[key] ?? '').toLowerCase();
+    const mode = trade.live ? 'live' : 'paper';
+    return (
+      (!filters.strategy || read('strategy').includes(filters.strategy.toLowerCase()) || read('botname').includes(filters.strategy.toLowerCase())) &&
+      (!filters.symbol || read('symbol').includes(filters.symbol.toLowerCase()) || read('optionname').includes(filters.symbol.toLowerCase())) &&
+      (!filters.status || read('status').includes(filters.status.toLowerCase()) || read('order_status').includes(filters.status.toLowerCase())) &&
+      (!filters.mode || mode === filters.mode)
+    );
+  }), [trades, filters]);
+
+  const exportCsv = () => {
+    if (!filteredRows.length) return;
+    const csv = [
+      columns.join(','),
+      ...filteredRows.map((row) => columns.map((col) => `"${String(row[col] ?? '').replace(/"/g, '""')}"`).join(',')),
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `main-trade-history-${filterDate}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
 
   return (
     <div className="uppercase mx-auto px-6 max-lg:px-3 py-4">
       <div className="flex justify-between flex-col mb-4 gap-3  max-lg:mt-14">
         <p className="text-2xl font-bold max-md:text-[18px] text-nowrap">Main Trades History</p>
      
-        
-          <p>Filter by Date</p>
-      
-          <input
-            type="date"
-            value={filterDate}
-            onChange={handleFilterChange}
-            className="border rounded px-2 py-1"
-          />
-   
-   
-    
-    
-      
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <div>
+            <p className="text-sm font-semibold">Filter by Date</p>
+            <input type="date" value={filterDate} onChange={handleFilterChange} className="w-full border rounded px-2 py-1" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Strategy</p>
+            <input value={filters.strategy} onChange={(e) => setFilters((prev) => ({ ...prev, strategy: e.target.value }))} className="w-full border rounded px-2 py-1" placeholder="Strategy" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Symbol</p>
+            <input value={filters.symbol} onChange={(e) => setFilters((prev) => ({ ...prev, symbol: e.target.value }))} className="w-full border rounded px-2 py-1" placeholder="Symbol" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Status</p>
+            <input value={filters.status} onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))} className="w-full border rounded px-2 py-1" placeholder="Status" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Paper / Live</p>
+            <select value={filters.mode} onChange={(e) => setFilters((prev) => ({ ...prev, mode: e.target.value }))} className="w-full border rounded px-2 py-1">
+              <option value="">All</option>
+              <option value="paper">Paper</option>
+              <option value="live">Live</option>
+            </select>
+          </div>
+          <div className="flex items-end">
+            <ExportButton onClick={exportCsv} disabled={!filteredRows.length} />
+          </div>
+        </div>
+        <p className="text-xs normal-case text-[#4B5675]">CSV export uses currently loaded rows. No dedicated backend export endpoint is exposed in this UI.</p>
       </div>
       <div className='w-full'>
   {loading ? (
-    <div className='flex justify-center items-center h-64'>
-      <h1 className="text-xl font-semibold text-gray-600">Loading...</h1>
-    </div>
+    <LoadingState label="Loading main trade history..." />
   ) : error ? (
-    <div className='flex flex-col gap-3 justify-center items-center h-64'>
-      <h1 className="text-xl font-bold text-red-600">{error}</h1>
-      <button
-        type="button"
-        onClick={() => fetchMainHistory(filterDate)}
-        className="bg-[#FF5733] text-white py-2 px-4 rounded-md font-semibold"
-      >
-        Retry
-      </button>
-    </div>
-  ) : filteredTrades.length === 0 ? (
-    <div className='flex justify-center items-center h-64'>
-      <h1 className="text-2xl font-bold text-[#FF5733]">No Trades found</h1>
-    </div>
+    <ErrorState message={error} onRetry={() => fetchMainHistory(filterDate)} />
+  ) : filteredRows.length === 0 ? (
+    <EmptyState title="No trades found" description="Adjust the date or filters to find matching trades." />
   ) : (
-    <TradesTable data={filteredTrades} columns={columns} />
+    <TradesTable data={filteredRows} columns={columns} />
   )}
 </div>
     </div>

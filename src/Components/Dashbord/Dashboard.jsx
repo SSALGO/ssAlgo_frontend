@@ -8,15 +8,21 @@ import {
   displayValue,
   getApiData,
   normalizeRecords,
-  toArray,
   toBooleanFlag,
   toObject,
 } from "../../utils/displayValue";
 
-import { ChevronDown } from "lucide-react";
+import { AlertTriangle, Bot, ChevronDown, CircleDollarSign, PlugZap, ShieldCheck, Wifi } from "lucide-react";
 import DynamicForm from "../Forms/DynamicForm";
 import DynamicEditForm from "../Forms/DynamicEditForm";
 import LoadingSpinner from "../LoadingSpinner";
+import {
+  ConfirmLiveActionModal,
+  EmptyState,
+  ErrorState,
+  MetricCard,
+  StatusBadge,
+} from "../../shared/components/TradingUi";
 const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
   const [showEditForm, setShowEditForm] = useState(false);
@@ -39,6 +45,8 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
   const [expiryDate, setExpiryDate] = useState("")
   const [brokers,setBrokers]=useState({})
   const [dashboardError, setDashboardError] = useState("")
+  const [pendingLiveStrategy, setPendingLiveStrategy] = useState(null);
+  const [actionBusy, setActionBusy] = useState(false);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -123,18 +131,50 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
     // "Status",
   ];
 
-  const handleStartClick = async (id) => {
+  const runStartStrategy = async (id) => {
     const token = localStorage.getItem("token");
-    const response = await postData("api_start_ssalgo", { id, token });
-    // toast.success("Strategy started successfully");
-
+    await postData("api_start_ssalgo", { id, token });
+    toast.success("Strategy started successfully.");
     fetchIndex();
   };
+
+  const handleStartClick = async (row) => {
+    if (toBooleanFlag(row.live)) {
+      setPendingLiveStrategy(row);
+      return;
+    }
+    try {
+      setActionBusy(true);
+      await runStartStrategy(row.botcode);
+    } catch (error) {
+      toast.error(error.message || "Unable to start the strategy.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const confirmLiveStart = async () => {
+    if (!pendingLiveStrategy) return;
+    try {
+      setActionBusy(true);
+      await runStartStrategy(pendingLiveStrategy.botcode);
+      setPendingLiveStrategy(null);
+    } catch (error) {
+      toast.error(error.message || "Unable to start live strategy.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
   const handleStopClick = async (id) => {
     const token = localStorage.getItem("token");
-    const response = await postData("api_stop_ssalgo", { id, token });
-    // toast.success("Strategy stopped successfully");
-    fetchIndex();
+    try {
+      await postData("api_stop_ssalgo", { id, token });
+      toast.success("Strategy stopped successfully.");
+      fetchIndex();
+    } catch (error) {
+      toast.error(error.message || "Unable to stop the strategy.");
+    }
   };
 
 
@@ -247,11 +287,14 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
         <>
           {Boolean(expiryDate && expiryDate > today_date) && (
          <button
-         onClick={() => handleStartClick(row.botcode)}
-         className="uppercase  pr-5 max-lg:pr-5  max-lg:px-2 gap-2 max-md:text-[12px]  font-bold text-sm py-1 bg-[#43C64C] text-white rounded hover:bg-green-600 flex  items-center"
+         onClick={() => handleStartClick(row)}
+         disabled={actionBusy}
+         className={`uppercase pr-5 max-lg:pr-5 max-lg:px-2 gap-2 max-md:text-[12px] font-bold text-sm py-1 text-white rounded flex items-center disabled:cursor-not-allowed disabled:opacity-60 ${
+          toBooleanFlag(row.live) ? "bg-red-700 hover:bg-red-800" : "bg-[#43C64C] hover:bg-green-600"
+         }`}
        >
          <img src="play1.png" alt="play" className="h-3 pl-2 " />
-         Start
+         {toBooleanFlag(row.live) ? "Start Live" : "Start"}
        </button>
           )}
 
@@ -293,24 +336,24 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
     }
   };
 
+  const activeStrategies = strategies.filter((strategy) => strategy.status !== "paused").length;
+  const todaysPnl = openPositions.reduce((sum, position) => sum + (Number(position.pnl) || 0), 0);
+  const rejectedOrders = [...strategies, ...openPositions].filter((item) =>
+    String(item.status || item.order_status || "").toLowerCase().includes("reject")
+  ).length;
+  const brokerStatus = toBooleanFlag(userlog) ? "connected" : "missing";
+  const feedStatus = openPositions.length || activeStrategies ? "connected" : "unknown";
+  const hasRiskLimits = Boolean(user?.day_loss_limit || user?.trade_limit || user?.max_loss || user?.max_trades);
+  const hasLiveStrategies = strategies.some((strategy) => toBooleanFlag(strategy.live));
+  const riskStatus = hasLiveStrategies && !hasRiskLimits ? "warning" : "ready";
+
   if (loading) {
     return <LoadingSpinner label="Loading dashboard..." />;
   }
 
   return (
     <>
-      {dashboardError && (
-        <div className="mx-6 mt-4 rounded border border-red-200 bg-red-50 px-4 py-3 normal-case text-red-700">
-          <p>{dashboardError}</p>
-          <button
-            type="button"
-            onClick={fetchIndex}
-            className="mt-2 rounded bg-red-700 px-3 py-1 text-sm font-semibold text-white"
-          >
-            Retry
-          </button>
-        </div>
-      )}
+      {dashboardError && <div className="mx-6 mt-4"><ErrorState message={dashboardError} onRetry={fetchIndex} /></div>}
       <header className="relative z-50 max-lg:pt-16">
         <nav className="relative z-50 flex justify-between items-center py-4 px-6 max-lg:px-3">
           <div className="flex space-x-8 relative z-50">
@@ -485,18 +528,59 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
 
 
-      <div
-        onClick={closeDropdown}
-        className="  py-4 px-6  max-lg:px-3  w-full "
-      >
+      <div onClick={closeDropdown} className="py-4 px-6 max-lg:px-3 w-full">
 
         {!ShowDynamicForm && !showEditForm && (
           <div className="uppercase max-lg:mt-1">
-            <h2 className="text-2xl font-bold mb-4 text-[#0A1438]">
-              Strategy Table
-            </h2>
-            <div className=" bg-white   rounded-lg overflow-x-auto">
-              <table className=" border-2 rounded-lg">
+            <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <MetricCard label="Broker connection" value={toBooleanFlag(userlog) ? "Connected" : "Not connected"} status={brokerStatus} icon={<PlugZap size={18} />} />
+              <MetricCard label="Live feed" value={feedStatus === "connected" ? "Receiving data" : "No active feed"} status={feedStatus} icon={<Wifi size={18} />} />
+              <MetricCard label="Active strategies" value={activeStrategies} status={activeStrategies ? "active" : "paused"} icon={<Bot size={18} />} />
+              <MetricCard label="Today's P&L" value={todaysPnl} status={todaysPnl < 0 ? "warning" : "ready"} icon={<CircleDollarSign size={18} />} />
+            </div>
+
+            <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+              <MetricCard label="Open positions" value={openPositions.length} status={openPositions.length ? "active" : "paused"} />
+              <MetricCard label="Rejected orders" value={rejectedOrders} status={rejectedOrders ? "rejected" : "ready"} />
+              <MetricCard label="Risk status" value={riskStatus === "ready" ? "Limits ready" : "Needs review"} status={riskStatus} icon={<ShieldCheck size={18} />} />
+            </div>
+
+            {hasLiveStrategies && !hasRiskLimits ? (
+              <div className="mb-5 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 normal-case text-amber-900">
+                <AlertTriangle className="mt-0.5 shrink-0" size={20} />
+                <p className="text-sm font-semibold">
+                  Live trading is enabled for at least one strategy, but risk limits are not fully visible in your profile data.
+                </p>
+              </div>
+            ) : null}
+
+            <div className="mb-5 flex flex-wrap gap-3">
+              <button onClick={() => OpenForm("add_rf_form")} className="rounded-md bg-[#FF5733] px-4 py-2 text-sm font-bold text-white hover:bg-orange-700">
+                Create Strategy
+              </button>
+              <a href="/api" className="rounded-md border border-[#FF5733] px-4 py-2 text-sm font-bold text-[#FF5733] hover:bg-[#FFF0EC]">
+                Connect Broker
+              </a>
+              <button onClick={() => OpenForm("add_rf_form")} className="rounded-md border border-sky-500 px-4 py-2 text-sm font-bold text-sky-700 hover:bg-sky-50">
+                Start Paper Trading
+              </button>
+            </div>
+
+            <h2 className="text-2xl font-bold mb-4 text-[#0A1438]">Strategy Table</h2>
+            {strategies.length === 0 ? (
+              <EmptyState
+                title="No strategy exists yet"
+                description="Create a strategy first. Paper trading is the safest place to validate the setup before any live broker action."
+                actions={(
+                  <>
+                    <button onClick={() => OpenForm("add_rf_form")} className="rounded-md bg-[#FF5733] px-4 py-2 text-sm font-bold text-white">Create Strategy</button>
+                    <a href="/api" className="rounded-md border border-[#FF5733] px-4 py-2 text-sm font-bold text-[#FF5733]">Connect Broker</a>
+                  </>
+                )}
+              />
+            ) : (
+            <div className="bg-white rounded-lg overflow-x-auto border border-slate-200">
+              <table className="min-w-full border-2 rounded-lg">
                 <thead className="">
                   <tr className="text-[#79829E]  text-sm">
                     {tableHeaders.map((header) => (
@@ -545,7 +629,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
                         {displayValue(strategy.timeframe)}
                       </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        {strategy.live ? "Live" : "Paper"}
+                        <StatusBadge value={strategy.live ? "Live" : "Paper"} tone={strategy.live ? "live" : "paper"} />
                       </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
                         {displayValue(strategy.lot)}
@@ -568,12 +652,16 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
                 </tbody>
               </table>
             </div>
+            )}
 
             <h2 className="text-2xl font-bold my-4 text-[#0A1438]">
               Live Positions
             </h2>
 
-            <div className=" bg-white rounded-lg mb-96 overflow-x-auto">
+            {openPositions.length === 0 ? (
+              <EmptyState title="No open positions" description="Positions will appear here once a paper or live strategy opens a trade." />
+            ) : (
+            <div className="bg-white rounded-lg mb-96 overflow-x-auto border border-slate-200">
               <table className="min-w-full border-2  ">
                 <thead className="">
                   <tr className="text-[#79829E]  text-sm">
@@ -625,7 +713,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
                         {position.current_price}
                       </td> */}
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        {position.live ? "Live" : "Paper"}
+                        <StatusBadge value={position.live ? "Live" : "Paper"} tone={position.live ? "live" : "paper"} />
                       </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
                         {displayValue(position.lot)}
@@ -652,6 +740,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         )}
 
@@ -670,6 +759,15 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
           />
         )}
       </div>
+
+      <ConfirmLiveActionModal
+        open={Boolean(pendingLiveStrategy)}
+        strategy={pendingLiveStrategy}
+        user={user}
+        onCancel={() => setPendingLiveStrategy(null)}
+        onConfirm={confirmLiveStart}
+        isSubmitting={actionBusy}
+      />
 
 
     </>

@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { postData } from '../../api';
+import { InlineError } from "../../shared/components/TradingUi";
 
 const SignUp = ({ onSwitchToLogin }) => {
   const [formData, setFormData] = useState({
@@ -20,6 +21,7 @@ const SignUp = ({ onSwitchToLogin }) => {
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    setErrors((prev) => ({ ...prev, [e.target.name]: "" }));
   };
 
   const validate = () => {
@@ -68,13 +70,13 @@ const SignUp = ({ onSwitchToLogin }) => {
   return (
     <form onSubmit={handleSubmit} className="w-full px-3">
       <ToastContainer />
-      <h5 className="text-2xl font-bold text-[#FF5733] max-md:text-lg">Join SSALGO 👑</h5>
+      <h5 className="text-2xl font-bold text-[#FF5733] max-md:text-lg">Join SSALGO</h5>
       <p className="text-sm my-2 font-medium text-[#252F4A]">
         Join SSALGO trading platform for a better experience.
       </p>
       <div className="mb-4">
         <div className="flex gap-2 mb-2">
-          <img src="user.svg" alt="" />
+          <img src="user.svg" alt="User" />
           <p className="block text-sm font-medium mb-1 text-[#252F4A]">
             User Name
           </p>
@@ -85,16 +87,17 @@ const SignUp = ({ onSwitchToLogin }) => {
             type="text"
             name="username"
             id="username"
-            placeholder={errors.username || "Set Username"}
+            placeholder="Set Username"
             onChange={handleChange}
             disabled={loading}
             required
           />
+          <InlineError message={errors.username} />
         </div>
       </div>
       <div className="mb-4">
         <div className="flex gap-2 mb-2">
-          <img src="email.svg" alt="" />
+          <img src="email.svg" alt="Email" />
           <p className="block text-sm font-medium mb-1 text-[#252F4A]">
             Email Address
           </p>
@@ -105,16 +108,17 @@ const SignUp = ({ onSwitchToLogin }) => {
             type="email"
             name="email"
             id="email"
-            placeholder={errors.email || "Enter Email Address"}
+            placeholder="Enter Email Address"
             onChange={handleChange}
             disabled={loading}
             required
           />
+          <InlineError message={errors.email} />
         </div>
       </div>
       <div className="mb-4">
         <div className="flex gap-2 mb-2 pl-1">
-          <img src="pass.svg" alt="" />
+          <img src="pass.svg" alt="Password" />
           <p className="block text-sm font-medium mb-1 text-[#252F4A]">
             Password
           </p>
@@ -125,7 +129,7 @@ const SignUp = ({ onSwitchToLogin }) => {
             type={showPassword ? "text" : "password"}
             name="password"
             id="password"
-            placeholder={errors.password || "Enter Password"}
+            placeholder="Enter Password"
             onChange={handleChange}
             disabled={loading}
             required
@@ -137,32 +141,34 @@ const SignUp = ({ onSwitchToLogin }) => {
           >
             {showPassword ? (
               <img className="w-5 h-5"
-               src="eye1.png" alt="" />
+               src="eye1.png" alt="Hide password" />
             ) : (
               <img className="w-5 h-5"
-               src="eye1-off.png" alt="" />
+               src="eye1-off.png" alt="Show password" />
             )}
           </button>
+          <InlineError message={errors.password} />
         </div>
       </div>
       <div className="mb-4">
         <div className="flex gap-2 mb-2">
-          <img src="call.svg" alt="" />
+          <img src="call.svg" alt="Mobile" />
           <p className="block text-sm font-medium mb-1 text-[#252F4A]">
             Mobile Number
           </p>
         </div>
         <div className="relative">
           <input
-            className={`w-full px-3 h-[50px] lg:w-[500px] py-2  border border-gray-300 rounded-md  ${errors.mobileNumber ? 'error-input' : ''}`}
+            className={`w-full px-3 h-[50px] lg:w-[500px] py-2  border border-gray-300 rounded-md  ${errors.mobile ? 'error-input' : ''}`}
             type="text"
             name="mobile"
             id="mobile"
-            placeholder={errors.mobileNumber || "Enter Mobile Number"}
+            placeholder="Enter Mobile Number"
             onChange={handleChange}
             disabled={loading}
             required
           />
+          <InlineError message={errors.mobile} />
         </div>
       </div>
       <button

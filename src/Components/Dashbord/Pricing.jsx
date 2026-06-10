@@ -10,6 +10,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { postData } from '../../api';
 import { toast } from 'react-toastify';
+import { EmptyState, ErrorState, LoadingState, StatusBadge } from '../../shared/components/TradingUi';
+import { displayValue, getApiData } from '../../utils/displayValue';
 
 // Utility function to load Razorpay script
 const loadRazorpayScript = () => {
@@ -28,7 +30,7 @@ const loadRazorpayScript = () => {
 };
 
 // PricingCard component
-const PricingCard = ({ title, originalPrice, discountedPrice, price,  features, color, priceColor, onPaymentClick }) => (
+const PricingCard = ({ title, originalPrice, discountedPrice, price, color, priceColor, onPaymentClick, disabled }) => (
   <div className=" uppercase bg-white p-4 rounded-lg shadow-md border-2 flex flex-col">
     <div className={`relative w-12 h-12 rounded-full flex items-center justify-center ${color}`}>
       <div className="w-9 h-9 rounded-full bg-white"></div>
@@ -55,9 +57,10 @@ const PricingCard = ({ title, originalPrice, discountedPrice, price,  features, 
     </ul> */}
     <button 
       onClick={() => onPaymentClick(title, price)}  
-      className="bg-[#FF5733] uppercase w-full mt-5 max-lg:mt-3 text-white py-2 px-4 rounded-md font-semibold hover:bg-orange-600 transition duration-300"
+      disabled={disabled}
+      className="bg-[#FF5733] uppercase w-full mt-5 max-lg:mt-3 text-white py-2 px-4 rounded-md font-semibold hover:bg-orange-600 transition duration-300 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      Pay Now
+      {disabled ? "Processing..." : "Pay Now"}
     </button>
   </div>
 );
@@ -67,6 +70,8 @@ const Pricing = () => {
   const [pricing, setPricing] = useState(null);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [payingPlan, setPayingPlan] = useState("");
+  const [currentPlan, setCurrentPlan] = useState({});
 
   // Fetch pricing data
   const fetchPricing = useCallback(async () => {
@@ -75,6 +80,11 @@ const Pricing = () => {
       setError(null);
       const response = await postData("api_pricing");
       setPricing(Array.isArray(response?.data) ? response.data : []);
+      const token = localStorage.getItem("token");
+      if (token) {
+        const profileResponse = await postData("api_user_profile", { token });
+        setCurrentPlan(getApiData(profileResponse) || {});
+      }
     } catch (error) {
       console.error("Error fetching pricing:", error);
       setError("Unable to fetch pricing information. Please try again later.");
@@ -86,6 +96,7 @@ const Pricing = () => {
   const handlePayment = useCallback(async (title, price) => {
     try {
       setError(null);
+      setPayingPlan(title);
       const token = localStorage.getItem("token");
       if (!token) {
         throw new Error("Authentication token not found");
@@ -116,6 +127,7 @@ const Pricing = () => {
               duration: paymentData.duration,
             });
             toast.success("Payment verified and subscription updated.");
+            fetchPricing();
           } catch (verificationError) {
             console.error("Payment verification error:", verificationError);
             toast.error(verificationError.message || "Payment verification failed.");
@@ -136,8 +148,10 @@ const Pricing = () => {
     } catch (error) {
       console.error("Payment error:", error);
       setError(error.message || "An error occurred while processing the payment. Please try again.");
+    } finally {
+      setPayingPlan("");
     }
-  }, []);
+  }, [fetchPricing]);
 
   // Load Razorpay script and fetch pricing on component mount
   useEffect(() => {
@@ -147,23 +161,13 @@ const Pricing = () => {
   // Error state
   if (error) {
     return (
-      <div className="text-red-500 p-4 bg-red-100 border border-red-400 rounded">
-        <p>{error}</p>
-        <button 
-          onClick={fetchPricing}
-          className="mt-2 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition duration-300"
-        >
-          Retry
-        </button>
-      </div>
+      <div className="p-4"><ErrorState message={error} onRetry={fetchPricing} /></div>
     );
   }
 
   // Loading state
   if (isLoading) {
-    return <div className="flex justify-center items-center h-64">
-      <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-gray-900"></div>
-    </div>;
+    return <div className="p-4"><LoadingState label="Loading pricing..." /></div>;
   }
 
 
@@ -192,10 +196,24 @@ const Pricing = () => {
       <p className="text-[#4B5675] text-lg mb-8 max-lg:mb-4 max-lg:text-sm">
         Pricing available for Monthly, Quarterly, Half Yearly, and Yearly subscriptions
       </p>
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-xs font-bold text-[#79829E]">Current plan</p>
+          <p className="mt-2 text-xl font-bold normal-case text-[#0A1438]">{displayValue(currentPlan.subtype) || "Not available"}</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-xs font-bold text-[#79829E]">Plan expiry</p>
+          <p className="mt-2 text-xl font-bold normal-case text-[#0A1438]">{displayValue(currentPlan.end) || "Not available"}</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-xs font-bold text-[#79829E]">Payment history</p>
+          <div className="mt-2"><StatusBadge value="API not ready" tone="warning" /></div>
+        </div>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        {plans.map((plan, index) => (
-          <PricingCard key={index} {...plan} onPaymentClick={handlePayment} />
-        ))}
+        {plans.length ? plans.map((plan, index) => (
+          <PricingCard key={index} {...plan} onPaymentClick={handlePayment} disabled={Boolean(payingPlan)} />
+        )) : <div className="lg:col-span-5"><EmptyState title="No pricing plans available" description="The pricing API did not return plan data." /></div>}
       </div>
     </div>
   );

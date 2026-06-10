@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { displayValue } from '../../utils/displayValue';
-import { postData, fetchGetData, postFormData } from '../../api';
+import { fetchGetData, postFormData } from '../../api';
 import OptionGrid, { tableFields } from '../OptionGrid/OptionGrid';
+import { toast } from "react-toastify";
+import { InlineError, RiskSummaryCard, StatusBadge } from "../../shared/components/TradingUi";
 
 
 const MultiSelect = ({ limit, value = [], onChange, name, disabled }) => {
@@ -36,9 +38,7 @@ const MultiSelect = ({ limit, value = [], onChange, name, disabled }) => {
         : [...value, option];
       onChange({ target: { name, value: newValue } });
     } else {
-      console.log("you can add only 10 values");
-      alert("you can't add more watchlists please connect to admin on whatsapp +916304109306");
-      // toast.error("you can add only 10 values")
+      toast.error("Watchlist limit reached. Contact admin to increase your strategy limit.");
     }
   };
 
@@ -128,6 +128,9 @@ const MultiSelect = ({ limit, value = [], onChange, name, disabled }) => {
 const DynamicEditForm = ({ formData = {}, onClose }) => {
   const [formValues, setFormValues] = useState({});
   const [options, setOptions] = useState([]);
+  const [errors, setErrors] = useState({});
+  const [formError, setFormError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const url = formData.action_url?.replace("/", "");
   const token = localStorage.getItem("token");
 
@@ -171,8 +174,8 @@ const DynamicEditForm = ({ formData = {}, onClose }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (Array.isArray(formValues['symbol[]']) && formValues['symbol[]'].length === 0) {
-      alert("Please select at least one watchlist.");
+    if (!validateForm()) {
+      setFormError("Please fix the highlighted fields before saving.");
       return;
     }
 
@@ -189,16 +192,18 @@ const DynamicEditForm = ({ formData = {}, onClose }) => {
       });
     });
 
-    const payload = {
-      formData
-    };
-
+    setIsSubmitting(true);
     try {
       await postFormData(url, formData);
+      toast.success("Strategy updated successfully.");
       onClose();
       window.location.reload();
     } catch (error) {
       console.error('Error submitting form:', error);
+      setFormError(error.message || "Unable to update the strategy.");
+      toast.error(error.message || "Unable to update the strategy.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -217,6 +222,39 @@ const DynamicEditForm = ({ formData = {}, onClose }) => {
         [name]: type === 'checkbox' ? (checked ? 1 : 0) : value
       }));
     }
+    setErrors((prev) => ({ ...prev, [name]: "" }));
+    setFormError("");
+  };
+
+  const getHelperText = (field) => {
+    const name = String(field.name || "").toLowerCase();
+    if (name.includes("timeframe")) return "Choose the candle interval used by the strategy signal.";
+    if (name.includes("lot") || name.includes("qty") || name.includes("quantity")) return "Controls order size. Keep this small while validating a setup.";
+    if (name.includes("sl")) return "Stop loss should reflect the maximum loss you are willing to accept.";
+    if (name.includes("tp") || name.includes("target")) return "Target profit level used for exits when supported by the strategy.";
+    if (name.includes("live")) return "Paper mode is simulated. Live mode may place broker orders.";
+    if (field.name?.endsWith("[]")) return "Search at least 3 characters, then select one or more tradable symbols.";
+    return "";
+  };
+
+  const validateForm = () => {
+    const nextErrors = {};
+    const fields = formData.page?.filter(field => (field.tag !== 'input' || field.type !== 'hidden') && !tableFields.includes(field.name)) || [];
+
+    fields.forEach((field) => {
+      const required = field.required === "True" || field.required === true;
+      const value = formValues[field.name];
+      if (required && (value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0))) {
+        nextErrors[field.name] = `${displayValue(field.label || field.name)} is required.`;
+      }
+    });
+
+    if (Array.isArray(formValues['symbol[]']) && formValues['symbol[]'].length === 0) {
+      nextErrors['symbol[]'] = "Select at least one watchlist.";
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   };
 
   const renderFormField = (field) => {
@@ -284,8 +322,19 @@ const DynamicEditForm = ({ formData = {}, onClose }) => {
         <span className="text-center font-medium">Go Back</span>
       </button>
 
-      <h2 className="text-2xl font-bold mb-6 text-gray-800">Edit Order</h2>
-      <form onSubmit={handleSubmit}>
+      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-2xl font-bold text-gray-800">Edit Strategy</h2>
+        <StatusBadge value={formValues.live ? "Live" : "Paper"} tone={formValues.live ? "live" : "paper"} />
+      </div>
+      <div className="mb-6">
+        <RiskSummaryCard strategy={formValues} compact />
+      </div>
+      {formError ? (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold normal-case text-red-700">
+          {formError}
+        </div>
+      ) : null}
+      <form onSubmit={handleSubmit} noValidate>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {visibleFields.map((field, index) => (
             <div
@@ -297,6 +346,8 @@ const DynamicEditForm = ({ formData = {}, onClose }) => {
               </label>
               <div className={field?.name?.endsWith('[]') ? 'mt-1' : ''}>
                 {renderFormField(field)}
+                {getHelperText(field) ? <p className="mt-1 text-xs normal-case text-[#4B5675]">{getHelperText(field)}</p> : null}
+                <InlineError message={errors[field.name]} />
               </div>
             </div>
           ))}
@@ -307,9 +358,10 @@ const DynamicEditForm = ({ formData = {}, onClose }) => {
         {hiddenFields.map((field, index) => renderFormField(field))}
         <button
           type="submit"
-          className="mt-6 px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-opacity-50 transition duration-150 ease-in-out"
+          disabled={isSubmitting}
+          className="mt-6 w-full rounded-md bg-orange-500 px-4 py-3 font-semibold text-white hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-opacity-50 transition duration-150 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
         >
-          Save
+          {isSubmitting ? "Saving..." : "Save"}
         </button>
       </form>
     </div>

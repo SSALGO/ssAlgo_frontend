@@ -1,5 +1,6 @@
 import React from "react";
 import { displayValue } from "../../utils/displayValue";
+import { StatusBadge } from "../../shared/components/TradingUi";
 
 const TradesTable = ({ data, columns }) => {
   return (
@@ -25,19 +26,26 @@ const TradesTable = ({ data, columns }) => {
                   key={colIndex}
                   className="py-3 px-5 max-lg:px-2 text-center whitespace-nowrap border-b-2 border-r-2 border-gray-300"
                 >
-                  <span
-                    className={`font-medium ${
-                      column === "PNL"
-                        ? row.PNL > 0
-                          ? "text-green-500"
-                          : row.PNL < 0
-                          ? "text-red-500"
-                          : ""
-                        : "text-[#252F4A]"
-                    }`}
-                  >
-                    {displayValue(row[column])}
-                  </span>
+                  {["status", "order_status", "live"].includes(String(column).toLowerCase()) ? (
+                    <StatusBadge
+                      value={String(column).toLowerCase() === "live" ? (row[column] ? "Live" : "Paper") : row[column]}
+                      tone={String(column).toLowerCase() === "live" ? (row[column] ? "live" : "paper") : undefined}
+                    />
+                  ) : (
+                    <span
+                      className={`font-medium ${
+                        String(column).toLowerCase() === "pnl"
+                          ? Number(row[column]) > 0
+                            ? "text-green-600"
+                            : Number(row[column]) < 0
+                            ? "text-red-600"
+                            : ""
+                          : "text-[#252F4A]"
+                      }`}
+                    >
+                      {displayValue(row[column])}
+                    </span>
+                  )}
                 </td>
               ))}
             </tr>

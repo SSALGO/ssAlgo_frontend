@@ -3,6 +3,7 @@ import { postData } from '../../api';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { displayValue, getApiData, toBooleanFlag } from '../../utils/displayValue';
+import { ErrorState, LoadingState, RiskSummaryCard, StatusBadge } from '../../shared/components/TradingUi';
 
 const UserProfile = ({ user }) => {
   const tokens = localStorage.getItem("token");
@@ -73,11 +74,15 @@ const UserProfile = ({ user }) => {
     }
   };
 
+  const riskEnforced = toBooleanFlag(userProfile.risk_enforced ?? userProfile.risk_limits_enforced ?? userProfile.risk_enabled ?? true);
+  const liveEnabled = toBooleanFlag(userProfile.live_enabled ?? userProfile.live_trading_enabled ?? userProfile.live);
+  const missingRiskLimits = !dayLossLimit || !tradeLimit;
+
   return (
     <div className="uppercase lg:px-6 px-3 py-4">
       <h1 className="text-2xl font-bold mb-6 max-lg:mt-14">User Profile</h1>
-      {loading && <p className="mb-4 text-gray-600">Loading profile...</p>}
-      {error && <p className="mb-4 text-red-600 font-semibold">{error}</p>}
+      {loading && <LoadingState label="Loading profile..." />}
+      {error && <div className="mb-4"><ErrorState message={error} /></div>}
       <h2 className="text-xl font-semibold mb-4">Account Overview</h2>
 
       <div className="bg-white border-gray-200 border-2 rounded-lg">
@@ -118,39 +123,38 @@ const UserProfile = ({ user }) => {
 
       {/* New Section: Trading Limits */}
       <div className="bg-white border-gray-200 border-2 rounded-lg mt-10">
-        <h2 className="text-xl font-semibold px-5 py-3">Trading Limit Settings</h2>
+        <div className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-xl font-semibold">Trading Limit Settings</h2>
+          <StatusBadge value={riskEnforced ? "Enforced" : "Not enforced"} tone={riskEnforced ? "ready" : "warning"} />
+        </div>
         <div className="bg-gray-200 mb-6 border-b-2"></div>
 
+        <div className="px-5 pb-4 max-md:px-2">
+          <RiskSummaryCard strategy={{ live: liveEnabled, lot: userProfile.max_quantity || userProfile.max_qty || userProfile.quantity }} user={{ day_loss_limit: dayLossLimit, trade_limit: tradeLimit }} />
+          {liveEnabled && missingRiskLimits ? (
+            <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 normal-case text-sm font-semibold text-red-700">
+              Live trading appears enabled without complete visible risk limits. Set a day loss limit and trade limit before live use.
+            </div>
+          ) : null}
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4 px-5 pb-6 max-md:px-1">
-          <div className="flex items-center">
-            <span className="w-48 font-medium text-[#79829E]">Day Profit Limit:</span>
-            <input
-              type="number"
-              value={dayProfitLimit}
-              onChange={(e) => setDayProfitLimit(e.target.value)}
-              className="border px-3 py-2 rounded-md w-full"
-              placeholder="Enter day profit limit"
-            />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="rounded-lg border border-slate-200 p-4">
+            <label className="block font-medium text-[#79829E]">Day Profit Limit</label>
+            <p className="mb-2 text-xs normal-case text-[#4B5675]">Optional daily profit target for stopping new trades after gains.</p>
+            <input type="number" value={dayProfitLimit} onChange={(e) => setDayProfitLimit(e.target.value)} className="border px-3 py-2 rounded-md w-full" placeholder="Enter day profit limit" />
           </div>
-          <div className="flex items-center">
-            <span className="w-48 font-medium text-[#79829E]">Day Loss Limit:</span>
-            <input
-              type="number"
-              value={dayLossLimit}
-              onChange={(e) => setDayLossLimit(e.target.value)}
-              className="border px-3 py-2 rounded-md w-full"
-              placeholder="Enter day loss limit"
-            />
+          <div className="rounded-lg border border-slate-200 p-4">
+            <label className="block font-medium text-[#79829E]">Day Loss Limit</label>
+            <p className="mb-2 text-xs normal-case text-[#4B5675]">Maximum daily loss allowed before risk controls should stop trading.</p>
+            <input type="number" value={dayLossLimit} onChange={(e) => setDayLossLimit(e.target.value)} className="border px-3 py-2 rounded-md w-full" placeholder="Enter day loss limit" />
           </div>
-          <div className="flex items-center">
-            <span className="w-48 font-medium text-[#79829E]">Trade Limit:</span>
-            <input
-              type="number"
-              value={tradeLimit}
-              onChange={(e) => setTradeLimit(e.target.value)}
-              className="border px-3 py-2 rounded-md w-full"
-              placeholder="Enter trade limit"
-            />
+          <div className="rounded-lg border border-slate-200 p-4">
+            <label className="block font-medium text-[#79829E]">Trade Limit</label>
+            <p className="mb-2 text-xs normal-case text-[#4B5675]">Maximum trades allowed in the configured trading window.</p>
+            <input type="number" value={tradeLimit} onChange={(e) => setTradeLimit(e.target.value)} className="border px-3 py-2 rounded-md w-full" placeholder="Enter trade limit" />
+          </div>
           </div>
           <div className="text-right">
             <button
