@@ -7,9 +7,29 @@ import {
   toArray,
   toObject,
 } from "../../utils/displayValue";
-import { ErrorState, LoadingState, StatusBadge } from "../../shared/components/TradingUi";
+import { ErrorState, StatusBadge } from "../../shared/components/TradingUi";
 
 const MASKED_SECRET_VALUE = "********";
+
+const BrokerSetupSkeleton = () => (
+  <div className="mx-auto w-full animate-pulse px-6 py-4 max-lg:px-3">
+    <div className="mb-5 flex items-center justify-between">
+      <div className="h-8 w-52 rounded bg-slate-200" />
+      <div className="h-9 w-40 rounded bg-slate-200" />
+    </div>
+    <div className="mb-5 grid grid-cols-1 gap-3 lg:grid-cols-4">
+      {[0, 1, 2, 3].map((item) => (
+        <div key={item} className="h-24 rounded border border-slate-200 bg-slate-100" />
+      ))}
+    </div>
+    <div className="mb-5 h-11 rounded bg-slate-100" />
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {[0, 1, 2, 3].map((item) => (
+        <div key={item} className="h-20 rounded border border-slate-200 bg-slate-100" />
+      ))}
+    </div>
+  </div>
+);
 
 const BrokerSetup = () => {
   const [brokerList, setBrokerList] = useState([]);
@@ -250,10 +270,15 @@ const BrokerSetup = () => {
   const handleTestConnection = async () => {
     setIsTesting(true);
     try {
+      const response = await postFastApiJsonData(`api/brokers/${selectedBroker}/test`, {}, accessToken);
+      if (!response?.success) {
+        throw new Error(response?.data?.message || response?.message || "Broker connection failed.");
+      }
       await fetchBrokerHealth();
-      toast.success("Broker status refreshed.");
+      toast.success(`${displayValue(selectedBrokerMeta?.name) || selectedBroker} connected successfully.`);
     } catch (error) {
       toast.error(error.message || "Unable to test broker connection.");
+      await fetchBrokerHealth();
     } finally {
       setIsTesting(false);
     }
@@ -263,6 +288,9 @@ const BrokerSetup = () => {
   const selectedHealth = brokerHealth.find((health) => health?.broker === selectedBroker);
   const selectedSavedCredentials = toObject(savedCredentials[selectedBroker]);
   const hasSavedCredentials = Object.keys(selectedSavedCredentials).length > 0 || Boolean(savedApiId);
+  const configuredBrokers = brokerList.filter((broker) => (
+    broker.key === activeBroker || Object.keys(toObject(savedCredentials[broker.key])).length > 0
+  ));
 
   const statusClass = (value) => {
     const normalized = String(value || "").toLowerCase();
@@ -285,7 +313,7 @@ const BrokerSetup = () => {
   );
 
   if (isLoading) {
-    return <div className="px-6 py-4"><LoadingState label="Loading broker settings..." /></div>;
+    return <BrokerSetupSkeleton />;
   }
 
   return (
@@ -329,6 +357,45 @@ const BrokerSetup = () => {
       </div>
     </div>
 
+    {configuredBrokers.length > 0 && (
+      <div className="mb-5">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-bold text-[#252F4A]">Configured brokers</h2>
+          <span className="text-xs font-semibold normal-case text-[#79829E]">
+            {configuredBrokers.length} saved
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {configuredBrokers.map((broker) => {
+            const health = brokerHealth.find((item) => item?.broker === broker.key);
+            const missing = toArray(health?.missing_credentials);
+            const connection = health?.login_status || (missing.length ? "missing" : "not tested");
+            return (
+              <button
+                key={broker.key}
+                type="button"
+                onClick={() => setSelectedBroker(broker.key)}
+                className={`flex min-h-20 items-center justify-between gap-3 rounded border p-3 text-left ${
+                  selectedBroker === broker.key ? "border-[#FF5733] bg-[#FFF7F4]" : "border-slate-200 bg-white"
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-[#252F4A]">{displayValue(broker.name)}</p>
+                  <p className="mt-1 text-xs normal-case text-[#79829E]">
+                    {broker.key === activeBroker ? "Active broker" : "Credentials saved"}
+                  </p>
+                </div>
+                <StatusBadge
+                  value={connection}
+                  tone={connection === "connected" ? "connected" : missing.length ? "missing" : "unknown"}
+                />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    )}
+
     {loadError && <div className="mb-5"><ErrorState message={loadError} onRetry={fetchBrokerList} /></div>}
 
     <div className="mb-4">
@@ -367,6 +434,14 @@ const BrokerSetup = () => {
         {statusPill("Login status", selectedHealth?.login_status)}
         {statusPill("Websocket", selectedHealth?.websocket_status)}
         {statusPill("Enabled", selectedBrokerMeta?.status?.enabled === false ? "coming_soon" : "wired")}
+        {selectedHealth?.last_test_at ? (
+          <div className="flex items-center justify-between rounded border border-gray-200 px-3 py-2">
+            <span className="normal-case text-sm text-gray-600">Last tested</span>
+            <span className="text-xs font-semibold normal-case text-[#4B5675]">
+              {displayValue(selectedHealth.last_test_at)}
+            </span>
+          </div>
+        ) : null}
         {selectedHealth?.missing_credentials?.length > 0 && (
           <div className="rounded border border-yellow-200 bg-yellow-50 px-3 py-2 normal-case text-yellow-800 lg:col-span-2">
             Missing: {displayValue(selectedHealth.missing_credentials)}
