@@ -24,6 +24,7 @@ const statusStyles = {
   missing: "border-amber-300 bg-amber-50 text-amber-800",
   warning: "border-amber-300 bg-amber-50 text-amber-800",
   paused: "border-slate-300 bg-slate-50 text-slate-700",
+  not_tested: "border-amber-300 bg-amber-50 text-amber-800",
   unknown: "border-slate-300 bg-slate-50 text-slate-700",
 };
 

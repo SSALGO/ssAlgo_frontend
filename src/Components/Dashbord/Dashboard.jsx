@@ -12,7 +12,7 @@ import {
   toObject,
 } from "../../utils/displayValue";
 
-import { AlertTriangle, Bot, ChevronDown, CircleDollarSign, PlugZap, ShieldCheck, Wifi } from "lucide-react";
+import { AlertTriangle, Bot, ChevronDown, CircleDollarSign, Loader2, PlugZap, ShieldCheck, Wifi } from "lucide-react";
 import DynamicForm from "../Forms/DynamicForm";
 import DynamicEditForm from "../Forms/DynamicEditForm";
 import LoadingSpinner from "../LoadingSpinner";
@@ -44,9 +44,11 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
   const [itemToDelete, setItemToDelete] = useState(null);
   const [expiryDate, setExpiryDate] = useState("")
   const [brokers,setBrokers]=useState({})
+  const [brokerHealth,setBrokerHealth]=useState({})
+  const [tradingRuntime,setTradingRuntime]=useState({})
   const [dashboardError, setDashboardError] = useState("")
   const [pendingLiveStrategy, setPendingLiveStrategy] = useState(null);
-  const [actionBusy, setActionBusy] = useState(false);
+  const [busyStrategyId, setBusyStrategyId] = useState("");
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -70,8 +72,10 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
    const token = localStorage.getItem("token");
    const response = await postData("api_delete_oposition", { position_time: id, token });
  }
-  const fetchIndex = async () => {
-    setLoading(true);
+  const fetchIndex = async ({ showLoading = true } = {}) => {
+    if (showLoading) {
+      setLoading(true);
+    }
     setDashboardError("");
     try {
       const token = localStorage.getItem("token");
@@ -79,10 +83,17 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
       const indexData = getApiData(response) || {};
       setStrategies(normalizeRecords(indexData.strategy));
       setOpenPositions(normalizeRecords(indexData.opositions));
-      setUserLog(toBooleanFlag(indexData.userlog));
+      const brokerLoginStatus = displayValue(indexData.broker_health?.login_status).toLowerCase();
+      setUserLog(
+        brokerLoginStatus
+          ? brokerLoginStatus === "connected"
+          : toBooleanFlag(indexData.userlog)
+      );
       headerData(indexData);
       setExpiryDate(displayValue(indexData.user_expiry));
       setBrokers(toObject(indexData.brokers));
+      setBrokerHealth(toObject(indexData.broker_health));
+      setTradingRuntime(toObject(indexData.trading_runtime));
       setAllStrategy(toObject(indexData.allstrategies));
       // console.log("all strategy",allStrategy)
       // console.log("admin broker data",brokers)
@@ -91,7 +102,9 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
       console.error("Error fetching APIs:", error);
       setDashboardError(error.message || "Unable to load dashboard data.");
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -133,9 +146,15 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
   const runStartStrategy = async (id) => {
     const token = localStorage.getItem("token");
-    await postData("api_start_ssalgo", { id, token });
-    toast.success("Strategy started successfully.");
-    fetchIndex();
+    const response = await postData("api_start_ssalgo", { id, token });
+    const responseData = getApiData(response) || {};
+    const message = response?.message || "Strategy started successfully.";
+    if (responseData.runtime_ready === false) {
+      toast.warning(message);
+    } else {
+      toast.success(message);
+    }
+    await fetchIndex({ showLoading: false });
   };
 
   const handleStartClick = async (row) => {
@@ -144,25 +163,26 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
       return;
     }
     try {
-      setActionBusy(true);
+      setBusyStrategyId(row.botcode);
       await runStartStrategy(row.botcode);
     } catch (error) {
       toast.error(error.message || "Unable to start the strategy.");
     } finally {
-      setActionBusy(false);
+      setBusyStrategyId("");
     }
   };
 
   const confirmLiveStart = async () => {
     if (!pendingLiveStrategy) return;
+    const strategyId = pendingLiveStrategy.botcode;
     try {
-      setActionBusy(true);
-      await runStartStrategy(pendingLiveStrategy.botcode);
+      setBusyStrategyId(strategyId);
+      await runStartStrategy(strategyId);
       setPendingLiveStrategy(null);
     } catch (error) {
       toast.error(error.message || "Unable to start live strategy.");
     } finally {
-      setActionBusy(false);
+      setBusyStrategyId("");
     }
   };
 
@@ -282,19 +302,24 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
   const today_date = `${year}-${month}-${day}`;
   // console.log(today_date)
   const renderActions = (row) => {
+    const isStarting = busyStrategyId === row.botcode;
     if (row.status === "paused") {
       return (
         <>
           {Boolean(expiryDate && expiryDate > today_date) && (
          <button
          onClick={() => handleStartClick(row)}
-         disabled={actionBusy}
+         disabled={isStarting}
          className={`uppercase pr-5 max-lg:pr-5 max-lg:px-2 gap-2 max-md:text-[12px] font-bold text-sm py-1 text-white rounded flex items-center disabled:cursor-not-allowed disabled:opacity-60 ${
           toBooleanFlag(row.live) ? "bg-red-700 hover:bg-red-800" : "bg-[#43C64C] hover:bg-green-600"
          }`}
        >
-         <img src="play1.png" alt="play" className="h-3 pl-2 " />
-         {toBooleanFlag(row.live) ? "Start Live" : "Start"}
+         {isStarting ? (
+           <Loader2 size={14} className="ml-2 animate-spin" />
+         ) : (
+           <img src="play1.png" alt="play" className="h-3 pl-2 " />
+         )}
+         {isStarting ? "Starting..." : toBooleanFlag(row.live) ? "Start Live" : "Start"}
        </button>
           )}
 
@@ -342,7 +367,9 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
     String(item.status || item.order_status || "").toLowerCase().includes("reject")
   ).length;
   const brokerStatus = toBooleanFlag(userlog) ? "connected" : "missing";
-  const feedStatus = openPositions.length || activeStrategies ? "connected" : "unknown";
+  const feedStatus = displayValue(brokerHealth.websocket_status || "unknown").toLowerCase();
+  const strategyEngineStatus = displayValue(tradingRuntime.strategy_engine || tradingRuntime.state || "unknown").toLowerCase();
+  const strategyEngineReady = strategyEngineStatus === "running" && tradingRuntime.healthy === true;
   const hasRiskLimits = Boolean(user?.day_loss_limit || user?.trade_limit || user?.max_loss || user?.max_trades);
   const hasLiveStrategies = strategies.some((strategy) => toBooleanFlag(strategy.live));
   const riskStatus = hasLiveStrategies && !hasRiskLimits ? "warning" : "ready";
@@ -539,11 +566,21 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
               <MetricCard label="Today's P&L" value={todaysPnl} status={todaysPnl < 0 ? "warning" : "ready"} icon={<CircleDollarSign size={18} />} />
             </div>
 
-            <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
               <MetricCard label="Open positions" value={openPositions.length} status={openPositions.length ? "active" : "paused"} />
               <MetricCard label="Rejected orders" value={rejectedOrders} status={rejectedOrders ? "rejected" : "ready"} />
               <MetricCard label="Risk status" value={riskStatus === "ready" ? "Limits ready" : "Needs review"} status={riskStatus} icon={<ShieldCheck size={18} />} />
+              <MetricCard label="Strategy runtime" value={strategyEngineReady ? "Running" : strategyEngineStatus} status={strategyEngineReady ? "active" : "failed"} icon={<Bot size={18} />} />
             </div>
+
+            {activeStrategies && !strategyEngineReady ? (
+              <div className="mb-5 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 normal-case text-red-900">
+                <AlertTriangle className="mt-0.5 shrink-0" size={20} />
+                <p className="text-sm font-semibold">
+                  Strategies are marked active, but the strategy runtime is not running. No signals or orders will be generated.
+                </p>
+              </div>
+            ) : null}
 
             {hasLiveStrategies && !hasRiskLimits ? (
               <div className="mb-5 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 normal-case text-amber-900">
@@ -553,18 +590,6 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
                 </p>
               </div>
             ) : null}
-
-            <div className="mb-5 flex flex-wrap gap-3">
-              <button onClick={() => OpenForm("add_rf_form")} className="rounded-md bg-[#FF5733] px-4 py-2 text-sm font-bold text-white hover:bg-orange-700">
-                Create Strategy
-              </button>
-              <a href="/api" className="rounded-md border border-[#FF5733] px-4 py-2 text-sm font-bold text-[#FF5733] hover:bg-[#FFF0EC]">
-                Connect Broker
-              </a>
-              <button onClick={() => OpenForm("add_rf_form")} className="rounded-md border border-sky-500 px-4 py-2 text-sm font-bold text-sky-700 hover:bg-sky-50">
-                Start Paper Trading
-              </button>
-            </div>
 
             <h2 className="text-2xl font-bold mb-4 text-[#0A1438]">Strategy Table</h2>
             {strategies.length === 0 ? (
@@ -766,7 +791,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
         user={user}
         onCancel={() => setPendingLiveStrategy(null)}
         onConfirm={confirmLiveStart}
-        isSubmitting={actionBusy}
+        isSubmitting={Boolean(busyStrategyId)}
       />
 
 

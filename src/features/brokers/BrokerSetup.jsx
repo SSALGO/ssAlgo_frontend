@@ -297,17 +297,25 @@ const BrokerSetup = () => {
     if (["connected", "filled", "wired", "paper_only"].includes(normalized)) {
       return "bg-green-100 text-green-700";
     }
-    if (["missing_credentials", "coming_soon", "unknown"].includes(normalized)) {
+    if (["missing_credentials", "coming_soon", "not_tested", "not tested", "unknown"].includes(normalized)) {
       return "bg-yellow-100 text-yellow-700";
     }
     return "bg-red-100 text-red-700";
+  };
+
+  const displayStatus = (value, fallback = "Not tested") => {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (!normalized || normalized === "unknown" || normalized === "not_tested") {
+      return fallback;
+    }
+    return normalized.replaceAll("_", " ");
   };
 
   const statusPill = (label, value) => (
     <div className="flex items-center justify-between rounded border border-gray-200 px-3 py-2">
       <span className="normal-case text-sm text-gray-600">{label}</span>
       <span className={`rounded px-2 py-1 text-xs font-semibold uppercase ${statusClass(value)}`}>
-        {displayValue(value) || "unknown"}
+        {displayStatus(value)}
       </span>
     </div>
   );
@@ -344,16 +352,31 @@ const BrokerSetup = () => {
         </p>
       </div>
       <div className="rounded border border-gray-200 p-3">
-        <p className="text-xs font-semibold text-gray-500">Login</p>
-        <p className="mt-1 text-lg font-bold normal-case">
-          {displayValue(selectedHealth?.login_status) || "unknown"}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-gray-500">Login</p>
+            <p className="mt-1 text-lg font-bold normal-case">
+              {displayStatus(selectedHealth?.login_status)}
+            </p>
+          </div>
+          {hasSavedCredentials && selectedBroker !== "paper" ? (
+            <button
+              type="button"
+              onClick={handleTestConnection}
+              disabled={isTesting}
+              className="rounded border border-[#FF5733] px-2.5 py-1.5 text-xs font-bold text-[#FF5733] hover:bg-[#FFF0EC] disabled:opacity-60"
+            >
+              {isTesting ? "Testing..." : "Test"}
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="rounded border border-gray-200 p-3">
         <p className="text-xs font-semibold text-gray-500">Websocket</p>
         <p className="mt-1 text-lg font-bold normal-case">
-          {displayValue(selectedHealth?.websocket_status) || "unknown"}
+          {displayStatus(selectedHealth?.websocket_status)}
         </p>
+        <p className="mt-1 text-xs normal-case text-[#79829E]">Updated by the live market-feed worker.</p>
       </div>
     </div>
 
@@ -369,7 +392,10 @@ const BrokerSetup = () => {
           {configuredBrokers.map((broker) => {
             const health = brokerHealth.find((item) => item?.broker === broker.key);
             const missing = toArray(health?.missing_credentials);
-            const connection = health?.login_status || (missing.length ? "missing" : "not tested");
+            const connection = displayStatus(
+              health?.login_status,
+              missing.length ? "Missing credentials" : "Not tested"
+            );
             return (
               <button
                 key={broker.key}
@@ -387,7 +413,7 @@ const BrokerSetup = () => {
                 </div>
                 <StatusBadge
                   value={connection}
-                  tone={connection === "connected" ? "connected" : missing.length ? "missing" : "unknown"}
+                  tone={connection === "connected" ? "connected" : missing.length ? "missing" : "not_tested"}
                 />
               </button>
             );
