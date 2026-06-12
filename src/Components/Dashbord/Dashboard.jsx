@@ -66,6 +66,10 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
   useEffect(() => {
     fetchIndex();
+    const refreshTimer = window.setInterval(() => {
+      fetchIndex({ showLoading: false });
+    }, 15000);
+    return () => window.clearInterval(refreshTimer);
   }, []);
 
   const exitPosition = async (id) => {
@@ -363,9 +367,12 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
   const activeStrategies = strategies.filter((strategy) => strategy.status !== "paused").length;
   const todaysPnl = openPositions.reduce((sum, position) => sum + (Number(position.pnl) || 0), 0);
-  const rejectedOrders = [...strategies, ...openPositions].filter((item) =>
-    String(item.status || item.order_status || "").toLowerCase().includes("reject")
-  ).length;
+  const rejectedOrders = [...strategies, ...openPositions].filter((item) => {
+    const state = String(
+      item.entry_order_state || item.order_status || item.status || ""
+    ).toLowerCase();
+    return state.includes("reject") || state.includes("failed");
+  }).length;
   const brokerStatus = toBooleanFlag(userlog) ? "connected" : "missing";
   const feedStatus = displayValue(brokerHealth.websocket_status || "unknown").toLowerCase();
   const strategyEngineStatus = displayValue(tradingRuntime.strategy_engine || tradingRuntime.state || "unknown").toLowerCase();
