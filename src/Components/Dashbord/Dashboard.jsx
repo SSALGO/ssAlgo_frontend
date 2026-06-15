@@ -504,6 +504,13 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
             </div>
 
             <button
+              onClick={() => window.open("/mcx-strategy-lab", "_self")}
+              className="uppercase text-[#FF5733] text-lg font-bold max-md:text-sm"
+            >
+              MCX Lab
+            </button>
+
+            <button
               onClick={() => OpenForm("add_ssequity_eq_form")}
               className= "uppercase text-[#FF5733] text-lg font-bold max-md:text-sm "
             >
