@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
@@ -15,7 +15,6 @@ import {
 import { AlertTriangle, Bot, ChevronDown, CircleDollarSign, Loader2, PlugZap, ShieldCheck, Wifi } from "lucide-react";
 import DynamicForm from "../Forms/DynamicForm";
 import DynamicEditForm from "../Forms/DynamicEditForm";
-import LoadingSpinner from "../LoadingSpinner";
 import {
   ConfirmLiveActionModal,
   EmptyState,
@@ -23,6 +22,60 @@ import {
   MetricCard,
   StatusBadge,
 } from "../../shared/components/TradingUi";
+
+const SkeletonBlock = ({ className = "" }) => (
+  <div className={`animate-pulse rounded bg-slate-200 ${className}`} />
+);
+
+const DashboardCardSkeleton = () => (
+  <div className="rounded border border-slate-200 bg-white p-4">
+    <div className="mb-3 flex items-center justify-between">
+      <SkeletonBlock className="h-4 w-32" />
+      <SkeletonBlock className="h-8 w-8 rounded-full" />
+    </div>
+    <SkeletonBlock className="h-7 w-24" />
+    <SkeletonBlock className="mt-3 h-3 w-20" />
+  </div>
+);
+
+const BrokerStatusSkeleton = () => (
+  <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+    {[0, 1, 2, 3].map((item) => (
+      <DashboardCardSkeleton key={item} />
+    ))}
+  </div>
+);
+
+const TableSkeleton = ({ headers = [], rows = 5 }) => (
+  <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <table className="min-w-full border-2 rounded-lg">
+      <thead>
+        <tr className="text-[#79829E] text-sm">
+          {headers.map((header) => (
+            <th
+              key={header}
+              className="border-b-2 border-r-2 px-5 py-3 text-left text-sm font-medium text-[#79829E] text-nowrap max-lg:px-2 max-lg:py-2 max-md:text-[12px]"
+            >
+              {header}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-dashed">
+        {Array.from({ length: rows }).map((_, rowIndex) => (
+          <tr key={rowIndex}>
+            {headers.map((header, colIndex) => (
+              <td key={`${header}-${rowIndex}`} className="px-5 py-3 max-lg:px-2 max-lg:py-2">
+                <SkeletonBlock className={`h-4 ${colIndex === 0 ? "w-28" : "w-20"}`} />
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
 const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
   const [showEditForm, setShowEditForm] = useState(false);
@@ -31,7 +84,10 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
   // console.log(user)
 
-  const [loading, setLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [formLoading, setFormLoading] = useState(false);
+  const latestFetchId = useRef(0);
 
   const [strategyDropdown, setStrategyDropdown] = useState(false);
   const [BrokerDropdown,setBrokerDropdown] = useState(false)
@@ -65,9 +121,9 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
   }
 
   useEffect(() => {
-    fetchIndex();
+    fetchIndex({ showLoading: true, reason: "initial" });
     const refreshTimer = window.setInterval(() => {
-      fetchIndex({ showLoading: false });
+      fetchIndex({ showLoading: false, reason: "interval" });
     }, 15000);
     return () => window.clearInterval(refreshTimer);
   }, []);
@@ -76,14 +132,19 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
    const token = localStorage.getItem("token");
    const response = await postData("api_delete_oposition", { position_time: id, token });
  }
-  const fetchIndex = async ({ showLoading = true } = {}) => {
-    if (showLoading) {
-      setLoading(true);
+  const fetchIndex = async ({ showLoading = false, reason = "refresh" } = {}) => {
+    const fetchId = latestFetchId.current + 1;
+    latestFetchId.current = fetchId;
+    const initialRequest = reason === "initial";
+    if (showLoading && initialRequest) {
+      setIsInitialLoading(true);
+    } else {
+      setIsRefreshing(true);
     }
-    setDashboardError("");
     try {
       const token = localStorage.getItem("token");
       const response = await postData("api_index", { token });
+      if (fetchId !== latestFetchId.current) return;
       const indexData = getApiData(response) || {};
       setStrategies(normalizeRecords(indexData.strategy));
       setOpenPositions(normalizeRecords(indexData.opositions));
@@ -99,16 +160,21 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
       setBrokerHealth(toObject(indexData.broker_health));
       setTradingRuntime(toObject(indexData.trading_runtime));
       setAllStrategy(toObject(indexData.allstrategies));
+      setDashboardError("");
       // console.log("all strategy",allStrategy)
       // console.log("admin broker data",brokers)
 
     } catch (error) {
+      if (fetchId !== latestFetchId.current) return;
       console.error("Error fetching APIs:", error);
       setDashboardError(error.message || "Unable to load dashboard data.");
-    } finally {
-      if (showLoading) {
-        setLoading(false);
+      if (!initialRequest) {
+        toast.error(error.message || "Unable to refresh dashboard data.");
       }
+    } finally {
+      if (fetchId !== latestFetchId.current) return;
+      setIsInitialLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -195,7 +261,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
     try {
       await postData("api_stop_ssalgo", { id, token });
       toast.success("Strategy stopped successfully.");
-      fetchIndex();
+      fetchIndex({ showLoading: false, reason: "action" });
     } catch (error) {
       toast.error(error.message || "Unable to stop the strategy.");
     }
@@ -203,7 +269,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
 
   const OpenForm = async (strategy) => {
-    setLoading(true);
+    setFormLoading(true);
     try {
       const token = localStorage.getItem("token");
       const response = await postData("api_add_strategy_form", {
@@ -233,7 +299,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
       console.error("Error in fetching strategy form data:", error);
       toast.error(error.message || "Unable to load the strategy form.");
     } finally {
-      setLoading(false);
+      setFormLoading(false);
     }
   };
 
@@ -259,7 +325,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
         token,
       });
       toast.success("Strategy deleted successfully.");
-      await fetchIndex();
+      await fetchIndex({ showLoading: false, reason: "action" });
     } catch (error) {
       toast.error(error.message || "Unable to delete the strategy.");
     }
@@ -272,7 +338,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
   };
 
   const OnModify = async (data) => {
-    setLoading(true);
+    setFormLoading(true);
     try {
       const token = localStorage.getItem("token");
       const response = await postData(`api_edit_strategy_form/${data.botcode}`, {
@@ -287,7 +353,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
     } catch (error) {
       toast.error(error.message || "Unable to edit the strategy.");
     } finally {
-      setLoading(false);
+      setFormLoading(false);
     }
   };
 
@@ -385,21 +451,25 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
     ...allStrategy,
   };
 
-  if (loading) {
-    return <LoadingSpinner label="Loading dashboard..." />;
-  }
-
   return (
     <>
-      {dashboardError && <div className="mx-6 mt-4"><ErrorState message={dashboardError} onRetry={fetchIndex} /></div>}
+      {dashboardError && (
+        <div className="mx-6 mt-4">
+          <ErrorState
+            message={dashboardError}
+            onRetry={() => fetchIndex({ showLoading: isInitialLoading, reason: isInitialLoading ? "initial" : "manual" })}
+          />
+        </div>
+      )}
       <header className="relative z-50 max-lg:pt-16">
         <nav className="relative z-50 flex justify-between items-center py-4 px-6 max-lg:px-3">
           <div className="flex space-x-8 relative z-50">
             <button
               onClick={() => OpenForm("add_rf_form")}
+              disabled={formLoading}
               className="text-[#FF5733] text-lg font-bold uppercase max-md:text-sm"
             >
-              Algo Auto
+              {formLoading ? "Loading..." : "Algo Auto"}
             </button>
 
             {/* <div className="relative">
@@ -444,6 +514,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
                       <button
                         key={`${name}-${index}`}
                         onClick={() => OpenForm(formId)}
+                        disabled={formLoading}
                         className="block w-full px-4 py-2.5 text-left text-sm font-semibold text-[#252F4A] hover:bg-[#FFF0EC] hover:text-[#FF5733]"
                       >
                         {convertToCapital(name)}
@@ -509,6 +580,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
             <button
               onClick={() => OpenForm("add_ssequity_eq_form")}
+              disabled={formLoading}
               className= "uppercase text-[#FF5733] text-lg font-bold max-md:text-sm "
             >
               CharTink
@@ -570,21 +642,37 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
         {!ShowDynamicForm && !showEditForm && (
           <div className="uppercase max-lg:mt-1">
-            <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <MetricCard label="Broker connection" value={toBooleanFlag(userlog) ? "Connected" : "Not connected"} status={brokerStatus} icon={<PlugZap size={18} />} />
-              <MetricCard label="Live feed" value={feedStatus === "connected" ? "Receiving data" : "No active feed"} status={feedStatus} icon={<Wifi size={18} />} />
-              <MetricCard label="Active strategies" value={activeStrategies} status={activeStrategies ? "active" : "paused"} icon={<Bot size={18} />} />
-              <MetricCard label="Today's P&L" value={todaysPnl} status={todaysPnl < 0 ? "warning" : "ready"} icon={<CircleDollarSign size={18} />} />
-            </div>
+            {isRefreshing && !isInitialLoading ? (
+              <div className="mb-3 flex items-center gap-2 text-xs font-semibold normal-case text-[#79829E]">
+                <Loader2 size={14} className="animate-spin" />
+                Refreshing dashboard data
+              </div>
+            ) : null}
 
-            <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <MetricCard label="Open positions" value={openPositions.length} status={openPositions.length ? "active" : "paused"} />
-              <MetricCard label="Rejected orders" value={rejectedOrders} status={rejectedOrders ? "rejected" : "ready"} />
-              <MetricCard label="Risk status" value={riskStatus === "ready" ? "Limits ready" : "Needs review"} status={riskStatus} icon={<ShieldCheck size={18} />} />
-              <MetricCard label="Strategy runtime" value={strategyEngineReady ? "Running" : strategyEngineStatus} status={strategyEngineReady ? "active" : "failed"} icon={<Bot size={18} />} />
-            </div>
+            {isInitialLoading ? (
+              <>
+                <BrokerStatusSkeleton />
+                <BrokerStatusSkeleton />
+              </>
+            ) : (
+              <>
+                <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <MetricCard label="Broker connection" value={toBooleanFlag(userlog) ? "Connected" : "Not connected"} status={brokerStatus} icon={<PlugZap size={18} />} />
+                  <MetricCard label="Live feed" value={feedStatus === "connected" ? "Receiving data" : "No active feed"} status={feedStatus} icon={<Wifi size={18} />} />
+                  <MetricCard label="Active strategies" value={activeStrategies} status={activeStrategies ? "active" : "paused"} icon={<Bot size={18} />} />
+                  <MetricCard label="Today's P&L" value={todaysPnl} status={todaysPnl < 0 ? "warning" : "ready"} icon={<CircleDollarSign size={18} />} />
+                </div>
 
-            {activeStrategies && !strategyEngineReady ? (
+                <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <MetricCard label="Open positions" value={openPositions.length} status={openPositions.length ? "active" : "paused"} />
+                  <MetricCard label="Rejected orders" value={rejectedOrders} status={rejectedOrders ? "rejected" : "ready"} />
+                  <MetricCard label="Risk status" value={riskStatus === "ready" ? "Limits ready" : "Needs review"} status={riskStatus} icon={<ShieldCheck size={18} />} />
+                  <MetricCard label="Strategy runtime" value={strategyEngineReady ? "Running" : strategyEngineStatus} status={strategyEngineReady ? "active" : "failed"} icon={<Bot size={18} />} />
+                </div>
+              </>
+            )}
+
+            {!isInitialLoading && activeStrategies && !strategyEngineReady ? (
               <div className="mb-5 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 normal-case text-red-900">
                 <AlertTriangle className="mt-0.5 shrink-0" size={20} />
                 <p className="text-sm font-semibold">
@@ -593,7 +681,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
               </div>
             ) : null}
 
-            {hasLiveStrategies && !hasRiskLimits ? (
+            {!isInitialLoading && hasLiveStrategies && !hasRiskLimits ? (
               <div className="mb-5 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 normal-case text-amber-900">
                 <AlertTriangle className="mt-0.5 shrink-0" size={20} />
                 <p className="text-sm font-semibold">
@@ -603,7 +691,9 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
             ) : null}
 
             <h2 className="text-2xl font-bold mb-4 text-[#0A1438]">Strategy Table</h2>
-            {strategies.length === 0 ? (
+            {isInitialLoading ? (
+              <TableSkeleton headers={tableHeaders} rows={6} />
+            ) : strategies.length === 0 ? (
               <EmptyState
                 title="No strategy exists yet"
                 description="Create a strategy first. Paper trading is the safest place to validate the setup before any live broker action."
@@ -694,7 +784,9 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
               Live Positions
             </h2>
 
-            {openPositions.length === 0 ? (
+            {isInitialLoading ? (
+              <TableSkeleton headers={table2Headers} rows={4} />
+            ) : openPositions.length === 0 ? (
               <EmptyState title="No open positions" description="Positions will appear here once a paper or live strategy opens a trade." />
             ) : (
             <div className="bg-white rounded-lg mb-96 overflow-x-auto border border-slate-200">

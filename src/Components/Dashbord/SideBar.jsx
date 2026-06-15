@@ -1,40 +1,17 @@
 
-
-
-
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import PropTypes from 'prop-types';
 import { Link, useLocation } from 'react-router-dom';
-import { postData } from '../../api';
-import { displayValue, getApiData } from '../../utils/displayValue';
 
-const Sidebar = ({ userType,isOpen, toggleSidebar,changeUserTypeToUser }) => {
+const Sidebar = ({ userType,isOpen, toggleSidebar,changeUserTypeToUser, userExpiry }) => {
   const location = useLocation();
-  const [date,setdate]=useState("")
+  const date = userExpiry || "";
   const isAdmin = localStorage.getItem("userType") === "admin";
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('accessToken');
     window.location.reload();
   }
-
-  const fetchIndex = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const response = await postData("api_index", { token });
-      const indexData = getApiData(response) || {};
-      setdate(displayValue(indexData.user_expiry));
-
-      // setApiData(response.data);
-    } catch (error) {
-      console.error("Error fetching APIs:", error);
-    }
-  };
-
-  useEffect(()=>{
-    fetchIndex();
-  },[])
-
 
   const today = new Date();
   const year = today.getFullYear();
@@ -185,7 +162,9 @@ const Sidebar = ({ userType,isOpen, toggleSidebar,changeUserTypeToUser }) => {
           </li>
 
           <div className="uppercase flex items-center text-xl font-bold mt-4 mb-2 w-full bg-[#450303] text-white py-2 px-4 rounded">
-  {today_date < date ? (
+  {!date ? (
+    "Loading expiry..."
+  ) : today_date < date ? (
     <div className='flex flex-col items-center justify-center'>
       Plan Expiry Date:
       <div className='justify-center'>{date}</div>
@@ -254,6 +233,7 @@ const Sidebar = ({ userType,isOpen, toggleSidebar,changeUserTypeToUser }) => {
 
 Sidebar.propTypes = {
   userType: PropTypes.oneOf(['admin', 'user']),
+  userExpiry: PropTypes.string,
 };
 
 export default Sidebar;

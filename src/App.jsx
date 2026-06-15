@@ -78,9 +78,6 @@ function AppContent() {
       case '/pricing':
         fetchPricingData();
         break;
-      case '/':
-        fetchDashboardData();
-        break;
       case '/user':
         fetchUserProfile();
         break;
@@ -94,15 +91,6 @@ function AppContent() {
         break;
     }
   }, [location]);
-
-  const fetchDashboardData = async () => {
-    try {
-      const response = await axios.get('/api/dashboard');
-      // console.log(response.data);
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-    }
-  };
 
   const fetchTradeHistory = async () => {
     try {
@@ -370,6 +358,7 @@ function AppContent() {
           <Sidebar
             userType={userType}
             isOpen={sidebarOpen}
+            userExpiry={userProfile.end}
             changeUserTypeToUser={changeUserTypeToUser}
             toggleSidebar={toggleSidebar}
           />

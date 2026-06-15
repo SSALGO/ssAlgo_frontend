@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { fetchFastApiGetData, postFastApiJsonData } from "../../api";
 import { toast } from "react-toastify";
-import { ExternalLink, Eye, EyeOff, Loader2 } from "lucide-react";
+import { ChevronDown, ExternalLink, Eye, EyeOff, Loader2, Plus } from "lucide-react";
 import "react-toastify/dist/ReactToastify.css";
 import {
   displayValue,
@@ -32,6 +32,219 @@ const BrokerSetupSkeleton = () => (
   </div>
 );
 
+const statusTone = (value) => {
+  const normalized = String(value || "").toLowerCase();
+  if (["connected", "filled", "wired", "paper_only"].includes(normalized)) return "connected";
+  if (["failed", "rejected", "disconnected", "error"].includes(normalized)) return "error";
+  if (["missing_credentials", "coming_soon", "not_tested", "not tested", "unknown", "reconnect_required"].includes(normalized)) return "missing";
+  return undefined;
+};
+
+const BrokerStatusBadge = ({ value, fallback = "Not tested" }) => (
+  <StatusBadge value={value || fallback} tone={statusTone(value || fallback)} />
+);
+
+const formatStatus = (value, fallback = "Not tested") => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized || normalized === "unknown" || normalized === "not_tested") {
+    return fallback;
+  }
+  return normalized.replaceAll("_", " ");
+};
+
+const formatDateTime = (value) => {
+  const raw = displayValue(value);
+  if (!raw) return "";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleString();
+};
+
+const getMainStatus = (health, hasCredentials, activeBroker) => {
+  if (!activeBroker) return "Not configured";
+  if (!hasCredentials && activeBroker !== "paper") return "Not configured";
+  const login = String(health?.login_status || "").toLowerCase();
+  const token = String(health?.token_status || "").toLowerCase();
+  if (login === "connected" || token === "connected") return "Connected";
+  if (["failed", "rejected", "error"].includes(login)) return "Failed";
+  if (["reconnect_required", "expired", "unauthorized"].includes(token)) return "Disconnected";
+  return "Disconnected";
+};
+
+const ActiveBrokerCard = ({
+  activeBrokerMeta,
+  activeHealth,
+  activeHasCredentials,
+  isAliceBlue,
+  isTesting,
+  isConnectingAliceBlue,
+  onPrimaryAction,
+  onTestConnection,
+  onManage,
+}) => {
+  const activeBrokerKey = activeBrokerMeta?.key || "";
+  const mainStatus = getMainStatus(activeHealth, activeHasCredentials, activeBrokerKey);
+  const failed = ["failed", "disconnected"].includes(mainStatus.toLowerCase());
+  const lastChecked = activeHealth?.last_verified_at || activeHealth?.last_test_at || activeHealth?.connected_at;
+  const primaryLabel = isAliceBlue
+    ? activeHasCredentials ? "Reconnect AliceBlue" : "Connect AliceBlue"
+    : activeHasCredentials ? "Manage Credentials" : "Configure Broker";
+
+  return (
+    <section className="mb-5 rounded-lg border border-slate-200 bg-white p-5 normal-case shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-[#79829E]">Active Broker</p>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-bold text-[#0A1438]">
+              {displayValue(activeBrokerMeta?.name) || "No broker configured"}
+            </h1>
+            <BrokerStatusBadge value={mainStatus} />
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+            <div>
+              <p className="font-semibold text-[#79829E]">Login</p>
+              <p className="mt-1 font-bold text-[#252F4A]">{formatStatus(activeHealth?.login_status)}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-[#79829E]">Websocket</p>
+              <p className="mt-1 font-bold text-[#252F4A]">{formatStatus(activeHealth?.websocket_status)}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-[#79829E]">Last checked</p>
+              <p className="mt-1 font-bold text-[#252F4A]">{formatDateTime(lastChecked) || "Not tested"}</p>
+            </div>
+          </div>
+          {failed && activeHealth?.last_error ? (
+            <div className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+              {displayValue(activeHealth.last_error)}
+            </div>
+          ) : null}
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
+          <button
+            type="button"
+            onClick={isAliceBlue ? onPrimaryAction : onManage}
+            disabled={isConnectingAliceBlue}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-[#FF5733] px-4 py-2 font-bold uppercase text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isConnectingAliceBlue ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : isAliceBlue ? <ExternalLink aria-hidden="true" className="h-4 w-4" /> : null}
+            {primaryLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onTestConnection}
+            disabled={isTesting || !activeBrokerKey}
+            className="rounded-md border border-[#FF5733] px-4 py-2 font-bold uppercase text-[#FF5733] hover:bg-[#FFF0EC] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isTesting ? "Testing..." : "Test Connection"}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+const ConfiguredBrokerList = ({ brokers, activeBroker, brokerHealth, savedCredentials, onManage, onMakeActive, onTest }) => (
+  <section className="mb-5 rounded-lg border border-slate-200 bg-white p-5 normal-case shadow-sm">
+    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h2 className="text-lg font-bold text-[#0A1438]">Configured Brokers</h2>
+        <p className="text-sm text-[#79829E]">Saved broker connections for this account.</p>
+      </div>
+    </div>
+    {brokers.length === 0 ? (
+      <div className="rounded border border-dashed border-slate-300 p-4 text-sm font-semibold text-[#79829E]">
+        No broker configured yet. Add a broker to start live trading.
+      </div>
+    ) : (
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-left text-sm">
+          <thead className="border-b border-slate-200 text-xs uppercase text-[#79829E]">
+            <tr>
+              <th className="px-3 py-3">Broker</th>
+              <th className="px-3 py-3">Active</th>
+              <th className="px-3 py-3">Credentials</th>
+              <th className="px-3 py-3">Connection</th>
+              <th className="px-3 py-3">Last tested</th>
+              <th className="px-3 py-3">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {brokers.map((broker) => {
+              const health = brokerHealth.find((item) => item?.broker === broker.key);
+              const missing = toArray(health?.missing_credentials);
+              const hasCredentials = Object.keys(toObject(savedCredentials[broker.key])).length > 0 || broker.key === activeBroker;
+              const connection = formatStatus(health?.login_status, missing.length ? "Missing credentials" : "Not tested");
+              return (
+                <tr key={broker.key} className="align-middle">
+                  <td className="px-3 py-3 font-bold text-[#252F4A]">{displayValue(broker.name)}</td>
+                  <td className="px-3 py-3">
+                    {broker.key === activeBroker ? <StatusBadge value="Active" tone="connected" /> : <span className="text-[#79829E]">-</span>}
+                  </td>
+                  <td className="px-3 py-3">
+                    <StatusBadge value={hasCredentials ? "Saved" : "Missing"} tone={hasCredentials ? "connected" : "missing"} />
+                  </td>
+                  <td className="px-3 py-3">
+                    <BrokerStatusBadge value={connection} />
+                  </td>
+                  <td className="px-3 py-3 text-[#4B5675]">{formatDateTime(health?.last_test_at) || "Not tested"}</td>
+                  <td className="px-3 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => onManage(broker.key)} className="rounded border border-slate-300 px-3 py-1.5 font-bold text-[#252F4A] hover:bg-slate-50">
+                        Manage
+                      </button>
+                      {broker.key !== activeBroker ? (
+                        <button type="button" onClick={() => onMakeActive(broker.key)} className="rounded border border-[#FF5733] px-3 py-1.5 font-bold text-[#FF5733] hover:bg-[#FFF0EC]">
+                          Make Active
+                        </button>
+                      ) : null}
+                      <button type="button" onClick={() => onTest(broker.key)} className="rounded border border-[#FF5733] px-3 py-1.5 font-bold text-[#FF5733] hover:bg-[#FFF0EC]">
+                        Test
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </section>
+);
+
+const AvailableBrokerDrawer = ({ open, brokers, onClose, onSelect }) => {
+  if (!open) return null;
+  return (
+    <section className="mb-5 rounded-lg border border-slate-200 bg-white p-5 normal-case shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-[#0A1438]">Add or Change Broker</h2>
+          <p className="text-sm text-[#79829E]">Choose from supported brokers. Configured brokers stay in the compact list.</p>
+        </div>
+        <button type="button" onClick={onClose} className="rounded border border-slate-300 px-3 py-1.5 text-sm font-bold text-[#252F4A] hover:bg-slate-50">
+          Close
+        </button>
+      </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {brokers.map((broker) => (
+          <button
+            key={broker.key}
+            type="button"
+            onClick={() => onSelect(broker.key)}
+            disabled={broker.status?.enabled === false}
+            className="rounded border border-slate-200 p-4 text-left hover:border-[#FF5733] hover:bg-[#FFF7F4] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <p className="font-bold text-[#252F4A]">{displayValue(broker.name)}</p>
+            <p className="mt-1 text-xs text-[#79829E]">{broker.status?.enabled === false ? "Coming soon" : formatStatus(broker.status?.status, "Ready")}</p>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+};
+
 const BrokerSetup = () => {
   const [brokerList, setBrokerList] = useState([]);
   const [selectedBroker, setSelectedBroker] = useState("");
@@ -49,6 +262,10 @@ const BrokerSetup = () => {
   const [revealedSecretValues, setRevealedSecretValues] = useState({});
   const [revealingSecretField, setRevealingSecretField] = useState("");
   const [isConnectingAliceBlue, setIsConnectingAliceBlue] = useState(false);
+  const [isBrokerPanelOpen, setIsBrokerPanelOpen] = useState(false);
+  const [isConfiguringBroker, setIsConfiguringBroker] = useState(false);
+  const [healthError, setHealthError] = useState("");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const accessToken = localStorage.getItem("accessToken");
 
@@ -108,12 +325,14 @@ const BrokerSetup = () => {
 
   const fetchBrokerHealth = async () => {
     try {
+      setHealthError("");
       const response = await fetchFastApiGetData("api/brokers/status", {}, accessToken);
       if (response?.success) {
         setBrokerHealth(toArray(response.data).length ? response.data : Object.keys(toObject(response.data)).length ? [response.data] : []);
       }
     } catch (error) {
       console.error(error);
+      setHealthError(error.message || "Unable to refresh broker status.");
     }
   };
 
@@ -244,8 +463,10 @@ const BrokerSetup = () => {
     }
   }, [selectedBroker, brokerList, savedCredentials]);
 
-  const handleBrokerSelect = (e) => {
-    setSelectedBroker(e.target.value);
+  const openManageBroker = (brokerKey) => {
+    setSelectedBroker(brokerKey);
+    setIsConfiguringBroker(true);
+    setIsBrokerPanelOpen(false);
   };
 
   const handleInputChange = (fieldId, value) => {
@@ -334,6 +555,8 @@ const BrokerSetup = () => {
         toast.success("Credentials saved successfully");
         toast.success("Broker activated");
         setActiveBroker(selectedBroker);
+        setIsConfiguringBroker(false);
+        await fetchBrokerList();
         fetchBrokerHealth();
         if (response.data?.upserted_id) setSavedApiId(response.data.upserted_id);
       } else {
@@ -347,20 +570,18 @@ const BrokerSetup = () => {
     }
   };
 
-  const getActiveBrokerName = () => {
-    const active = brokerList.find((b) => b.key === activeBroker);
-    return active ? active.name : "";
-  };
-
-  const handleTestConnection = async () => {
+  const handleTestConnection = async (brokerKey = selectedBroker) => {
+    const brokerToTest = typeof brokerKey === "string" ? brokerKey : selectedBroker;
+    if (!brokerToTest) return;
     setIsTesting(true);
     try {
-      const response = await postFastApiJsonData(`api/brokers/${selectedBroker}/test`, {}, accessToken);
+      const response = await postFastApiJsonData(`api/brokers/${brokerToTest}/test`, {}, accessToken);
       if (!response?.success) {
         throw new Error(response?.data?.message || response?.message || "Broker connection failed.");
       }
       await fetchBrokerHealth();
-      toast.success(`${displayValue(selectedBrokerMeta?.name) || selectedBroker} connected successfully.`);
+      const brokerMeta = brokerList.find((broker) => broker.key === brokerToTest);
+      toast.success(`${displayValue(brokerMeta?.name) || brokerToTest} connected successfully.`);
     } catch (error) {
       toast.error(error.message || "Unable to test broker connection.");
       await fetchBrokerHealth();
@@ -384,6 +605,28 @@ const BrokerSetup = () => {
     }
   };
 
+  const handleMakeActive = async (brokerKey) => {
+    setIsSaving(true);
+    try {
+      const response = await postFastApiJsonData(`api/brokers/${brokerKey}/credentials`, {
+        values: {},
+        activate: true,
+      }, accessToken);
+      if (!response?.success) {
+        throw new Error(response?.message || "Unable to activate broker.");
+      }
+      setActiveBroker(brokerKey);
+      setSelectedBroker(brokerKey);
+      await fetchBrokerList();
+      await fetchBrokerHealth();
+      toast.success("Active broker updated");
+    } catch (error) {
+      toast.error(error.message || "Unable to activate broker.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const selectedBrokerMeta = brokerList.find((broker) => broker.key === selectedBroker);
   const selectedHealth = brokerHealth.find((health) => health?.broker === selectedBroker);
   const isAliceBlue = selectedBroker === "aliceblue";
@@ -392,302 +635,225 @@ const BrokerSetup = () => {
   const configuredBrokers = brokerList.filter((broker) => (
     broker.key === activeBroker || Object.keys(toObject(savedCredentials[broker.key])).length > 0
   ));
-
-  const statusClass = (value) => {
-    const normalized = String(value || "").toLowerCase();
-    if (["connected", "filled", "wired", "paper_only"].includes(normalized)) {
-      return "bg-green-100 text-green-700";
-    }
-    if (["missing_credentials", "coming_soon", "not_tested", "not tested", "unknown"].includes(normalized)) {
-      return "bg-yellow-100 text-yellow-700";
-    }
-    return "bg-red-100 text-red-700";
-  };
-
-  const displayStatus = (value, fallback = "Not tested") => {
-    const normalized = String(value || "").trim().toLowerCase();
-    if (!normalized || normalized === "unknown" || normalized === "not_tested") {
-      return fallback;
-    }
-    return normalized.replaceAll("_", " ");
-  };
-
-  const statusPill = (label, value) => (
-    <div className="flex items-center justify-between rounded border border-gray-200 px-3 py-2">
-      <span className="normal-case text-sm text-gray-600">{label}</span>
-      <span className={`rounded px-2 py-1 text-xs font-semibold uppercase ${statusClass(value)}`}>
-        {displayStatus(value)}
-      </span>
-    </div>
-  );
+  const activeBrokerMeta = brokerList.find((broker) => broker.key === activeBroker);
+  const activeHealth = brokerHealth.find((health) => health?.broker === activeBroker);
+  const activeSavedCredentials = toObject(savedCredentials[activeBroker]);
+  const activeHasCredentials = activeBroker === "paper" || Object.keys(activeSavedCredentials).length > 0;
+  const isActiveAliceBlue = activeBroker === "aliceblue";
+  const advancedBrokerKey = selectedBroker || activeBroker;
+  const advancedBrokerMeta = brokerList.find((broker) => broker.key === advancedBrokerKey);
+  const advancedHealth = brokerHealth.find((health) => health?.broker === advancedBrokerKey);
+  const advancedSavedCredentials = toObject(savedCredentials[advancedBrokerKey]);
 
   if (isLoading) {
     return <BrokerSetupSkeleton />;
   }
 
-  return (
-    <div className="mx-auto w-full px-6 py-4 uppercase max-lg:px-3">
-    <div className="mb-4 flex items-center justify-between">
-  <h1 className="text-2xl font-bold">Edit Broker API</h1>
-  {activeBroker && (
-    <div className="flex items-center space-x-4">
-      <p className="text-[#FF5733] font-semibold">Active Broker</p>
-      <p className="bg-[#FF5733] uppercase text-white py-2 px-4 rounded-md font-semibold hover:bg-orange-600 transition duration-300">
-        {displayValue(getActiveBrokerName())}
-      </p>
-    </div>
-  )}
-</div>
-
-    <div className="mb-5 grid grid-cols-1 gap-3 lg:grid-cols-4">
-      <div className="rounded border border-gray-200 p-3">
-        <p className="text-xs font-semibold text-gray-500">Mode</p>
-        <p className="mt-1 text-lg font-bold normal-case">
-          {selectedBroker === "paper" ? "Paper only" : "Live capable"}
-        </p>
-      </div>
-      <div className="rounded border border-gray-200 p-3">
-        <p className="text-xs font-semibold text-gray-500">Credentials</p>
-        <p className="mt-1 text-lg font-bold normal-case">
-          {selectedHealth?.missing_credentials?.length ? "Missing fields" : hasSavedCredentials ? "Saved" : "Ready"}
-        </p>
-      </div>
-      <div className="rounded border border-gray-200 p-3">
-        <div className="flex items-start justify-between gap-3">
+  const renderCredentialForm = () => {
+    if (!isConfiguringBroker || !selectedBroker) return null;
+    return (
+      <section className="mb-5 rounded-lg border border-slate-200 bg-white p-5 normal-case shadow-sm">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs font-semibold text-gray-500">Login</p>
-            <p className="mt-1 text-lg font-bold normal-case">
-              {displayStatus(selectedHealth?.login_status)}
-            </p>
-          </div>
-          {hasSavedCredentials && selectedBroker !== "paper" ? (
-            <button
-              type="button"
-              onClick={handleTestConnection}
-              disabled={isTesting}
-              className="rounded border border-[#FF5733] px-2.5 py-1.5 text-xs font-bold text-[#FF5733] hover:bg-[#FFF0EC] disabled:opacity-60"
-            >
-              {isTesting ? "Testing..." : "Test"}
-            </button>
-          ) : null}
-        </div>
-      </div>
-      <div className="rounded border border-gray-200 p-3">
-        <p className="text-xs font-semibold text-gray-500">Websocket</p>
-        <p className="mt-1 text-lg font-bold normal-case">
-          {displayStatus(selectedHealth?.websocket_status)}
-        </p>
-        <p className="mt-1 text-xs normal-case text-[#79829E]">Updated by the live market-feed worker.</p>
-      </div>
-    </div>
-
-    {configuredBrokers.length > 0 && (
-      <div className="mb-5">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <h2 className="text-sm font-bold text-[#252F4A]">Configured brokers</h2>
-          <span className="text-xs font-semibold normal-case text-[#79829E]">
-            {configuredBrokers.length} saved
-          </span>
-        </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {configuredBrokers.map((broker) => {
-            const health = brokerHealth.find((item) => item?.broker === broker.key);
-            const missing = toArray(health?.missing_credentials);
-            const connection = displayStatus(
-              health?.login_status,
-              missing.length ? "Missing credentials" : "Not tested"
-            );
-            return (
-              <button
-                key={broker.key}
-                type="button"
-                onClick={() => setSelectedBroker(broker.key)}
-                className={`flex min-h-20 items-center justify-between gap-3 rounded border p-3 text-left ${
-                  selectedBroker === broker.key ? "border-[#FF5733] bg-[#FFF7F4]" : "border-slate-200 bg-white"
-                }`}
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-[#252F4A]">{displayValue(broker.name)}</p>
-                  <p className="mt-1 text-xs normal-case text-[#79829E]">
-                    {broker.key === activeBroker ? "Active broker" : "Credentials saved"}
-                  </p>
-                </div>
-                <StatusBadge
-                  value={connection}
-                  tone={connection === "connected" ? "connected" : missing.length ? "missing" : "not_tested"}
-                />
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    )}
-
-    {loadError && <div className="mb-5"><ErrorState message={loadError} onRetry={fetchBrokerList} /></div>}
-
-    <div className="mb-4">
-      <label className="block text-sm font-medium mb-1">Select Broker</label>
-      <select
-        value={selectedBroker}
-        onChange={handleBrokerSelect}
-        className="border border-gray-300 px-4 py-2 rounded w-full"
-      >
-        <option value="">-- Select Broker --</option>
-        {brokerList.map((broker) => (
-          <option
-            key={broker.key}
-            value={broker.key}
-            disabled={broker.status?.enabled === false}
-          >
-            {displayValue(broker.name)}{broker.status?.enabled === false ? " (Coming soon)" : ""}
-          </option>
-        ))}
-      </select>
-    </div>
-
-    {selectedBroker && (
-      <div className={`mb-4 rounded-lg border p-4 normal-case text-sm ${
-        isAliceBlue ? "border-blue-200 bg-blue-50 text-blue-900" : "border-amber-200 bg-amber-50 text-amber-900"
-      }`}>
-        <p className="font-bold">Credential risk</p>
-        {isAliceBlue ? (
-          <p className="mt-1">
-            AliceBlue connects through broker redirect login. Password and TOTP fields are not collected here.
-          </p>
-        ) : (
-          <p className="mt-1">
-            Broker credentials can permit account access and order placement. Saved secret fields are shown as filled masks; type a new value only when you want to replace one.
-          </p>
-        )}
-        {displayValue(selectedBrokerMeta?.status?.notes) ? <p className="mt-2">{displayValue(selectedBrokerMeta?.status?.notes)}</p> : null}
-      </div>
-    )}
-
-    {selectedBroker && (
-      <div className="mb-5 grid grid-cols-1 gap-3 lg:grid-cols-2">
-        {statusPill("Registry", selectedBrokerMeta?.status?.status)}
-        {statusPill("Login status", selectedHealth?.login_status)}
-        {statusPill("Websocket", selectedHealth?.websocket_status)}
-        {statusPill("Enabled", selectedBrokerMeta?.status?.enabled === false ? "coming_soon" : "wired")}
-        {selectedHealth?.last_test_at ? (
-          <div className="flex items-center justify-between rounded border border-gray-200 px-3 py-2">
-            <span className="normal-case text-sm text-gray-600">Last tested</span>
-            <span className="text-xs font-semibold normal-case text-[#4B5675]">
-              {displayValue(selectedHealth.last_test_at)}
-            </span>
-          </div>
-        ) : null}
-        {selectedHealth?.missing_credentials?.length > 0 && (
-          <div className="rounded border border-yellow-200 bg-yellow-50 px-3 py-2 normal-case text-yellow-800 lg:col-span-2">
-            Missing: {displayValue(selectedHealth.missing_credentials)}
-          </div>
-        )}
-        {selectedHealth?.last_order_result && (
-          <div className="rounded border border-gray-200 px-3 py-2 normal-case text-gray-700 lg:col-span-2">
-            Last order: {displayValue(selectedHealth.last_order_result)}
-          </div>
-        )}
-        {selectedHealth?.last_error && (
-          <div className="rounded border border-red-200 bg-red-50 px-3 py-2 normal-case text-red-700 lg:col-span-2">
-            Last error: {displayValue(selectedHealth.last_error)}
-          </div>
-        )}
-      </div>
-    )}
-
-    {isAliceBlue ? (
-      <div className="mb-5 rounded border border-gray-200 bg-white p-4 normal-case">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-bold text-[#252F4A]">AliceBlue broker connection</p>
-            <p className="mt-1 text-sm text-[#4B5675]">
-              Status: {displayStatus(selectedHealth?.token_status || selectedHealth?.login_status)}
-            </p>
-            {selectedSavedCredentials?.alice_client_id ? (
-              <p className="mt-1 text-xs text-[#79829E]">
-                Client ID: {displayValue(selectedSavedCredentials.alice_client_id)}
-              </p>
+            <p className="text-xs font-bold uppercase tracking-wide text-[#79829E]">Broker Setup</p>
+            <h2 className="mt-1 text-xl font-bold text-[#0A1438]">
+              {displayValue(selectedBrokerMeta?.name) || selectedBroker}
+            </h2>
+            {displayValue(selectedBrokerMeta?.status?.notes) ? (
+              <p className="mt-1 text-sm text-[#4B5675]">{displayValue(selectedBrokerMeta.status.notes)}</p>
             ) : null}
           </div>
           <button
             type="button"
-            onClick={handleConnectAliceBlue}
-            disabled={isConnectingAliceBlue}
-            className="inline-flex items-center justify-center gap-2 rounded-md bg-[#FF5733] px-4 py-2 font-semibold uppercase text-white transition duration-300 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => setIsConfiguringBroker(false)}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm font-bold text-[#252F4A] hover:bg-slate-50"
           >
-            {isConnectingAliceBlue ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ExternalLink aria-hidden="true" className="h-4 w-4" />}
-            {hasSavedCredentials ? "Reconnect AliceBlue" : "Connect AliceBlue"}
+            Close
           </button>
         </div>
-      </div>
-    ) : brokerFields.map((field, index) => {
-      const normalizedField = toObject(field);
-      const fieldId = displayValue(normalizedField.id);
-      const inputType = displayValue(normalizedField.type) || "text";
-      const secret = isSecretField(normalizedField);
 
-      return (
-      <div key={fieldId || index} className="mb-4">
-        <label className="block text-sm font-medium mb-1">{displayValue(normalizedField.label) || fieldId}</label>
-        <div className="relative">
-          <input
-            type={secret ? (visibleSecretFields[fieldId] ? "text" : "password") : inputType}
-            value={displayValue(fieldValues[fieldId])}
-            onChange={(e) => handleInputChange(fieldId, e.target.value)}
-            autoComplete={secret ? "new-password" : "off"}
-            placeholder={secret && savedApiId ? "Saved - enter a new value to replace" : ""}
-            disabled={!fieldId}
-            className={`w-full rounded border border-gray-300 px-4 py-2 ${secret ? "pr-12" : ""}`}
-          />
-          {secret ? (
+        {isAliceBlue ? (
+          <div className="rounded border border-blue-200 bg-blue-50 p-4 text-blue-900">
+            <p className="font-bold">AliceBlue redirect authentication</p>
+            <p className="mt-1 text-sm">
+              AliceBlue connects through broker login redirect. Password and TOTP fields are not collected here.
+            </p>
+            {selectedSavedCredentials?.alice_client_id ? (
+              <p className="mt-2 text-sm">Client ID: {displayValue(selectedSavedCredentials.alice_client_id)}</p>
+            ) : null}
             <button
               type="button"
-              onClick={() => handleSecretVisibility(fieldId)}
-              disabled={!fieldId || revealingSecretField === fieldId}
-              aria-label={visibleSecretFields[fieldId] ? `Hide ${displayValue(normalizedField.label) || fieldId}` : `Show ${displayValue(normalizedField.label) || fieldId}`}
-              title={visibleSecretFields[fieldId] ? "Hide credential" : "Show credential"}
-              className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[#4B5675] hover:text-[#FF5733] disabled:cursor-wait disabled:opacity-60"
+              onClick={handleConnectAliceBlue}
+              disabled={isConnectingAliceBlue}
+              className="mt-4 inline-flex items-center justify-center gap-2 rounded-md bg-[#FF5733] px-4 py-2 font-bold uppercase text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {revealingSecretField === fieldId ? (
-                <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" />
-              ) : visibleSecretFields[fieldId] ? (
-                <EyeOff aria-hidden="true" className="h-5 w-5" />
-              ) : (
-                <Eye aria-hidden="true" className="h-5 w-5" />
-              )}
+              {isConnectingAliceBlue ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ExternalLink aria-hidden="true" className="h-4 w-4" />}
+              {hasSavedCredentials ? "Reconnect AliceBlue" : "Connect AliceBlue"}
             </button>
-          ) : null}
-        </div>
-        {secret && savedApiId ? (
-          <p className="mt-1 text-xs normal-case text-[#4B5675]">Saved value is present. Keep the mask to leave it unchanged.</p>
-        ) : null}
-      </div>
-      );
-    })}
+          </div>
+        ) : (
+          <>
+            <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-bold">Credential risk</p>
+              <p className="mt-1">
+                Broker credentials can permit account access and order placement. Saved secret fields are masked; type a new value only when replacing one.
+              </p>
+            </div>
+            {brokerFields.map((field, index) => {
+              const normalizedField = toObject(field);
+              const fieldId = displayValue(normalizedField.id);
+              const inputType = displayValue(normalizedField.type) || "text";
+              const secret = isSecretField(normalizedField);
 
-    <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-      {!isAliceBlue ? (
-        <button
-          onClick={handleSave}
-          disabled={isSaving || !selectedBroker}
-          className="bg-[#FF5733] uppercase max-lg:mt-3 text-white py-2 px-4 rounded-md font-semibold hover:bg-orange-600 transition duration-300 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isSaving ? "Saving..." : "Save Credentials"}
-        </button>
-      ) : null}
+              return (
+                <div key={fieldId || index} className="mb-4">
+                  <label className="mb-1 block text-sm font-bold text-[#252F4A]">{displayValue(normalizedField.label) || fieldId}</label>
+                  <div className="relative">
+                    <input
+                      type={secret ? (visibleSecretFields[fieldId] ? "text" : "password") : inputType}
+                      value={displayValue(fieldValues[fieldId])}
+                      onChange={(e) => handleInputChange(fieldId, e.target.value)}
+                      autoComplete={secret ? "new-password" : "off"}
+                      placeholder={secret && savedApiId ? "Saved - enter a new value to replace" : ""}
+                      disabled={!fieldId}
+                      className={`w-full rounded border border-gray-300 px-4 py-2 ${secret ? "pr-12" : ""}`}
+                    />
+                    {secret ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSecretVisibility(fieldId)}
+                        disabled={!fieldId || revealingSecretField === fieldId}
+                        aria-label={visibleSecretFields[fieldId] ? `Hide ${displayValue(normalizedField.label) || fieldId}` : `Show ${displayValue(normalizedField.label) || fieldId}`}
+                        title={visibleSecretFields[fieldId] ? "Hide credential" : "Show credential"}
+                        className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[#4B5675] hover:text-[#FF5733] disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {revealingSecretField === fieldId ? (
+                          <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" />
+                        ) : visibleSecretFields[fieldId] ? (
+                          <EyeOff aria-hidden="true" className="h-5 w-5" />
+                        ) : (
+                          <Eye aria-hidden="true" className="h-5 w-5" />
+                        )}
+                      </button>
+                    ) : null}
+                  </div>
+                  {secret && savedApiId ? (
+                    <p className="mt-1 text-xs text-[#4B5675]">Saved value is present. Keep the mask to leave it unchanged.</p>
+                  ) : null}
+                </div>
+              );
+            })}
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving || !selectedBroker}
+                className="rounded-md bg-[#FF5733] px-4 py-2 font-bold uppercase text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSaving ? "Saving..." : hasSavedCredentials ? "Save Credentials" : "Configure Broker"}
+              </button>
+            </div>
+          </>
+        )}
+      </section>
+    );
+  };
+
+  const renderAdvancedDetails = () => (
+    <section className="mb-5 rounded-lg border border-slate-200 bg-white p-5 normal-case shadow-sm">
       <button
         type="button"
-        onClick={handleTestConnection}
-        disabled={isTesting || !selectedBroker}
-        className="rounded-md border border-[#FF5733] px-4 py-2 font-semibold text-[#FF5733] hover:bg-[#FFF0EC] disabled:cursor-not-allowed disabled:opacity-60"
+        onClick={() => setAdvancedOpen((open) => !open)}
+        className="flex w-full items-center justify-between gap-3 text-left"
       >
-        {isTesting ? "Testing..." : "Test Connection"}
+        <div>
+          <h2 className="text-lg font-bold text-[#0A1438]">Advanced Details</h2>
+          <p className="text-sm text-[#79829E]">Technical broker status and debug fields.</p>
+        </div>
+        <ChevronDown className={`h-5 w-5 text-[#4B5675] transition ${advancedOpen ? "rotate-180" : ""}`} />
       </button>
-      <div className="flex items-center">
-        <StatusBadge value={selectedHealth?.last_error ? "Error" : selectedHealth?.login_status || "Not connected"} tone={selectedHealth?.last_error ? "error" : undefined} />
+      {advancedOpen ? (
+        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {[
+            ["Broker", displayValue(advancedBrokerMeta?.name) || advancedBrokerKey],
+            ["Registry", formatStatus(advancedBrokerMeta?.status?.status)],
+            ["Enabled", advancedBrokerMeta?.status?.enabled === false ? "Coming soon" : "Wired"],
+            ["Login raw", formatStatus(advancedHealth?.login_status)],
+            ["Websocket raw", formatStatus(advancedHealth?.websocket_status)],
+            ["Token status", formatStatus(advancedHealth?.token_status, "Not available")],
+            ["Client ID", displayValue(advancedSavedCredentials?.alice_client_id || advancedSavedCredentials?.client_id || advancedSavedCredentials?.apikey)],
+            ["Last tested", formatDateTime(advancedHealth?.last_test_at)],
+            ["Connected at", formatDateTime(advancedHealth?.connected_at)],
+            ["Last verified", formatDateTime(advancedHealth?.last_verified_at)],
+            ["Last order result", displayValue(advancedHealth?.last_order_result)],
+            ["Last error", displayValue(advancedHealth?.last_error)],
+          ].map(([label, value]) => (
+            <div key={label} className="flex items-center justify-between gap-3 rounded border border-slate-200 px-3 py-2">
+              <span className="text-sm font-semibold text-[#79829E]">{label}</span>
+              <span className="text-right text-sm font-bold text-[#252F4A]">{value || "-"}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+
+  return (
+    <div className="mx-auto w-full px-6 py-4 max-lg:px-3">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[#0A1438]">Broker API</h1>
+          <p className="text-sm font-semibold normal-case text-[#79829E]">Manage broker connection, credentials, and health.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsBrokerPanelOpen((open) => !open)}
+          className="inline-flex items-center justify-center gap-2 rounded-md bg-[#FF5733] px-4 py-2 font-bold uppercase text-white transition hover:bg-orange-600"
+        >
+          <Plus aria-hidden="true" className="h-4 w-4" />
+          Add Broker
+        </button>
       </div>
+
+      {loadError ? <div className="mb-5"><ErrorState message={loadError} onRetry={fetchBrokerList} /></div> : null}
+      {healthError ? (
+        <div className="mb-5 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold normal-case text-amber-900">
+          {healthError}
+        </div>
+      ) : null}
+
+      <ActiveBrokerCard
+        activeBrokerMeta={activeBrokerMeta}
+        activeHealth={activeHealth}
+        activeHasCredentials={activeHasCredentials}
+        isAliceBlue={isActiveAliceBlue}
+        isTesting={isTesting}
+        isConnectingAliceBlue={isConnectingAliceBlue}
+        onPrimaryAction={handleConnectAliceBlue}
+        onTestConnection={() => handleTestConnection(activeBroker)}
+        onManage={() => openManageBroker(activeBroker || selectedBroker)}
+      />
+
+      <ConfiguredBrokerList
+        brokers={configuredBrokers}
+        activeBroker={activeBroker}
+        brokerHealth={brokerHealth}
+        savedCredentials={savedCredentials}
+        onManage={openManageBroker}
+        onMakeActive={handleMakeActive}
+        onTest={handleTestConnection}
+      />
+
+      <AvailableBrokerDrawer
+        open={isBrokerPanelOpen}
+        brokers={brokerList}
+        onClose={() => setIsBrokerPanelOpen(false)}
+        onSelect={openManageBroker}
+      />
+
+      {renderCredentialForm()}
+      {renderAdvancedDetails()}
     </div>
-  </div>
   );
 };
 
