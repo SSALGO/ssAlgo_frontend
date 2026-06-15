@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { fetchFastApiGetData, postFastApiJsonData } from "../../api";
 import { toast } from "react-toastify";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import "react-toastify/dist/ReactToastify.css";
 import {
   displayValue,
@@ -44,6 +45,9 @@ const BrokerSetup = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [isTesting, setIsTesting] = useState(false);
+  const [visibleSecretFields, setVisibleSecretFields] = useState({});
+  const [revealedSecretValues, setRevealedSecretValues] = useState({});
+  const [revealingSecretField, setRevealingSecretField] = useState("");
 
   const accessToken = localStorage.getItem("accessToken");
 
@@ -132,6 +136,9 @@ const BrokerSetup = () => {
   };
 
   const applySavedBrokerData = (brokerKey, requirements = [], source = savedCredentials) => {
+    setVisibleSecretFields({});
+    setRevealedSecretValues({});
+    setRevealingSecretField("");
     const saved = toObject(source[brokerKey]);
     if (!Object.keys(saved).length) {
       initializeEmptyFields(requirements);
@@ -197,6 +204,9 @@ const BrokerSetup = () => {
     });
     setFieldValues(emptyFields);
     setSavedApiId("");
+    setVisibleSecretFields({});
+    setRevealedSecretValues({});
+    setRevealingSecretField("");
   };
 
   useEffect(() => {
@@ -220,6 +230,53 @@ const BrokerSetup = () => {
 
   const handleInputChange = (fieldId, value) => {
     setFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    setRevealedSecretValues((prev) => {
+      if (!(fieldId in prev) || prev[fieldId] === value) return prev;
+      const next = { ...prev };
+      delete next[fieldId];
+      return next;
+    });
+  };
+
+  const handleSecretVisibility = async (fieldId) => {
+    if (visibleSecretFields[fieldId]) {
+      setVisibleSecretFields((prev) => ({ ...prev, [fieldId]: false }));
+      if (savedApiId && revealedSecretValues[fieldId] === fieldValues[fieldId]) {
+        setFieldValues((prev) => ({ ...prev, [fieldId]: MASKED_SECRET_VALUE }));
+      }
+      return;
+    }
+
+    if (fieldValues[fieldId] !== MASKED_SECRET_VALUE) {
+      setVisibleSecretFields((prev) => ({ ...prev, [fieldId]: true }));
+      return;
+    }
+
+    if (revealedSecretValues[fieldId]) {
+      setFieldValues((prev) => ({ ...prev, [fieldId]: revealedSecretValues[fieldId] }));
+      setVisibleSecretFields((prev) => ({ ...prev, [fieldId]: true }));
+      return;
+    }
+
+    setRevealingSecretField(fieldId);
+    try {
+      const response = await postFastApiJsonData(
+        `api/brokers/${selectedBroker}/credentials/reveal`,
+        { field: fieldId },
+        accessToken,
+      );
+      const revealedValue = displayValue(response?.data?.value);
+      if (!response?.success || !revealedValue) {
+        throw new Error(response?.message || "Saved credential could not be revealed");
+      }
+      setFieldValues((prev) => ({ ...prev, [fieldId]: revealedValue }));
+      setRevealedSecretValues((prev) => ({ ...prev, [fieldId]: revealedValue }));
+      setVisibleSecretFields((prev) => ({ ...prev, [fieldId]: true }));
+    } catch (error) {
+      toast.error(error.message || "Unable to reveal saved credential");
+    } finally {
+      setRevealingSecretField("");
+    }
   };
 
   const handleSave = async () => {
@@ -235,7 +292,15 @@ const BrokerSetup = () => {
       const valuesToSave = { ...fieldValues };
       brokerFields.forEach((field) => {
         const fieldId = displayValue(toObject(field).id);
-        if (savedApiId && isSecretField(field) && (!valuesToSave[fieldId] || valuesToSave[fieldId] === MASKED_SECRET_VALUE)) {
+        if (
+          savedApiId
+          && isSecretField(field)
+          && (
+            !valuesToSave[fieldId]
+            || valuesToSave[fieldId] === MASKED_SECRET_VALUE
+            || revealedSecretValues[fieldId] === valuesToSave[fieldId]
+          )
+        ) {
           delete valuesToSave[fieldId];
         }
       });
@@ -495,15 +560,35 @@ const BrokerSetup = () => {
       return (
       <div key={fieldId || index} className="mb-4">
         <label className="block text-sm font-medium mb-1">{displayValue(normalizedField.label) || fieldId}</label>
-        <input
-          type={secret ? "password" : inputType}
-          value={displayValue(fieldValues[fieldId])}
-          onChange={(e) => handleInputChange(fieldId, e.target.value)}
-          autoComplete={secret ? "new-password" : "off"}
-          placeholder={secret && savedApiId ? "Saved - enter a new value to replace" : ""}
-          disabled={!fieldId}
-          className="border border-gray-300 px-4 py-2 rounded w-full"
-        />
+        <div className="relative">
+          <input
+            type={secret ? (visibleSecretFields[fieldId] ? "text" : "password") : inputType}
+            value={displayValue(fieldValues[fieldId])}
+            onChange={(e) => handleInputChange(fieldId, e.target.value)}
+            autoComplete={secret ? "new-password" : "off"}
+            placeholder={secret && savedApiId ? "Saved - enter a new value to replace" : ""}
+            disabled={!fieldId}
+            className={`w-full rounded border border-gray-300 px-4 py-2 ${secret ? "pr-12" : ""}`}
+          />
+          {secret ? (
+            <button
+              type="button"
+              onClick={() => handleSecretVisibility(fieldId)}
+              disabled={!fieldId || revealingSecretField === fieldId}
+              aria-label={visibleSecretFields[fieldId] ? `Hide ${displayValue(normalizedField.label) || fieldId}` : `Show ${displayValue(normalizedField.label) || fieldId}`}
+              title={visibleSecretFields[fieldId] ? "Hide credential" : "Show credential"}
+              className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[#4B5675] hover:text-[#FF5733] disabled:cursor-wait disabled:opacity-60"
+            >
+              {revealingSecretField === fieldId ? (
+                <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" />
+              ) : visibleSecretFields[fieldId] ? (
+                <EyeOff aria-hidden="true" className="h-5 w-5" />
+              ) : (
+                <Eye aria-hidden="true" className="h-5 w-5" />
+              )}
+            </button>
+          ) : null}
+        </div>
         {secret && savedApiId ? (
           <p className="mt-1 text-xs normal-case text-[#4B5675]">Saved value is present. Keep the mask to leave it unchanged.</p>
         ) : null}
