@@ -380,6 +380,10 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
   const hasRiskLimits = Boolean(user?.day_loss_limit || user?.trade_limit || user?.max_loss || user?.max_trades);
   const hasLiveStrategies = strategies.some((strategy) => toBooleanFlag(strategy.live));
   const riskStatus = hasLiveStrategies && !hasRiskLimits ? "warning" : "ready";
+  const availableStrategies = {
+    "MCX Commodity Strategy": "add_mcxstrategy_form",
+    ...allStrategy,
+  };
 
   if (loading) {
     return <LoadingSpinner label="Loading dashboard..." />;
@@ -435,8 +439,8 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
                   className="absolute left-0 top-full mt-2 min-w-56 max-h-80 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-xl z-[9999]"
                   onClick={(event) => event.stopPropagation()}
                 >
-                  {Object.entries(allStrategy).length > 0 ? (
-                    Object.entries(allStrategy).map(([name, formId], index) => (
+                  {Object.entries(availableStrategies).length > 0 ? (
+                    Object.entries(availableStrategies).map(([name, formId], index) => (
                       <button
                         key={`${name}-${index}`}
                         onClick={() => OpenForm(formId)}
