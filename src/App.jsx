@@ -463,6 +463,17 @@ function AppContent() {
               }
             />
             <Route
+              path="/broker-setup"
+              element={
+                <ProtectedRoute
+                  isAuthenticated={isAuthenticated}
+                  redirectTo="/login"
+                >
+                  <EditApi />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/admin/dashboard"
               element={
                 <ProtectedRoute
