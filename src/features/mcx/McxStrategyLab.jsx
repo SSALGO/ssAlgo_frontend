@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchFastApiGetData } from "../../api";
 import { EmptyState, ErrorState, LoadingState, StatusBadge } from "../../shared/components/TradingUi";
+import { mcxFallbackCatalog } from "./mcxFallbackCatalog";
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
@@ -30,6 +31,7 @@ const BulletList = ({ items }) => (
 
 const McxStrategyLab = () => {
   const [catalog, setCatalog] = useState(null);
+  const [catalogNotice, setCatalogNotice] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -37,6 +39,7 @@ const McxStrategyLab = () => {
   const fetchCatalog = async () => {
     setLoading(true);
     setError("");
+    setCatalogNotice("");
     try {
       const token = localStorage.getItem("accessToken") || localStorage.getItem("token");
       const response = await fetchFastApiGetData("api/mcx/strategies", {}, token);
@@ -44,7 +47,14 @@ const McxStrategyLab = () => {
       setCatalog(data);
       setSelectedId(data?.top_3?.[0]?.id || data?.strategies?.[0]?.id || "");
     } catch (err) {
-      setError(err.message || "Unable to load MCX strategy catalog.");
+      const message = err.message || "Unable to load MCX strategy catalog.";
+      if (/not found/i.test(message)) {
+        setCatalog(mcxFallbackCatalog);
+        setSelectedId(mcxFallbackCatalog.top_3?.[0]?.id || mcxFallbackCatalog.strategies?.[0]?.id || "");
+        setCatalogNotice("Backend endpoint /api/mcx/strategies is not available on this server yet, so this page is showing the bundled MCX catalog.");
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -84,6 +94,12 @@ const McxStrategyLab = () => {
           </div>
         </div>
       </div>
+
+      {catalogNotice ? (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+          {catalogNotice}
+        </div>
+      ) : null}
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {asArray(catalog.commodities).map((commodity) => (
