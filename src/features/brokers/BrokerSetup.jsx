@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { fetchFastApiGetData, postFastApiJsonData } from "../../api";
 import { toast } from "react-toastify";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { ExternalLink, Eye, EyeOff, Loader2 } from "lucide-react";
 import "react-toastify/dist/ReactToastify.css";
 import {
   displayValue,
@@ -48,6 +48,7 @@ const BrokerSetup = () => {
   const [visibleSecretFields, setVisibleSecretFields] = useState({});
   const [revealedSecretValues, setRevealedSecretValues] = useState({});
   const [revealingSecretField, setRevealingSecretField] = useState("");
+  const [isConnectingAliceBlue, setIsConnectingAliceBlue] = useState(false);
 
   const accessToken = localStorage.getItem("accessToken");
 
@@ -212,6 +213,25 @@ const BrokerSetup = () => {
   useEffect(() => {
     fetchBrokerList();
     fetchBrokerHealth();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("broker") === "aliceblue") {
+      const callbackStatus = params.get("status");
+      const message = params.get("message");
+      if (callbackStatus === "connected") {
+        toast.success(message || "AliceBlue connected");
+      } else if (callbackStatus === "failed") {
+        toast.error(message || "AliceBlue connection failed");
+      }
+      params.delete("broker");
+      params.delete("status");
+      params.delete("message");
+      const nextQuery = params.toString();
+      window.history.replaceState(
+        {},
+        "",
+        `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`,
+      );
+    }
   }, []);
 
   useEffect(() => {
@@ -349,8 +369,24 @@ const BrokerSetup = () => {
     }
   };
 
+  const handleConnectAliceBlue = async () => {
+    setIsConnectingAliceBlue(true);
+    try {
+      const response = await fetchFastApiGetData("api/brokers/aliceblue/connect-url", {}, accessToken);
+      const loginUrl = displayValue(response?.data?.login_url);
+      if (!response?.success || !loginUrl) {
+        throw new Error(response?.message || "Unable to create AliceBlue connect URL.");
+      }
+      window.location.assign(loginUrl);
+    } catch (error) {
+      toast.error(error.message || "Unable to start AliceBlue connection.");
+      setIsConnectingAliceBlue(false);
+    }
+  };
+
   const selectedBrokerMeta = brokerList.find((broker) => broker.key === selectedBroker);
   const selectedHealth = brokerHealth.find((health) => health?.broker === selectedBroker);
+  const isAliceBlue = selectedBroker === "aliceblue";
   const selectedSavedCredentials = toObject(savedCredentials[selectedBroker]);
   const hasSavedCredentials = Object.keys(selectedSavedCredentials).length > 0 || Boolean(savedApiId);
   const configuredBrokers = brokerList.filter((broker) => (
@@ -510,11 +546,19 @@ const BrokerSetup = () => {
     </div>
 
     {selectedBroker && (
-      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 normal-case text-sm text-amber-900">
+      <div className={`mb-4 rounded-lg border p-4 normal-case text-sm ${
+        isAliceBlue ? "border-blue-200 bg-blue-50 text-blue-900" : "border-amber-200 bg-amber-50 text-amber-900"
+      }`}>
         <p className="font-bold">Credential risk</p>
-        <p className="mt-1">
-          Broker credentials can permit account access and order placement. Saved secret fields are shown as filled masks; type a new value only when you want to replace one.
-        </p>
+        {isAliceBlue ? (
+          <p className="mt-1">
+            AliceBlue connects through broker redirect login. Password and TOTP fields are not collected here.
+          </p>
+        ) : (
+          <p className="mt-1">
+            Broker credentials can permit account access and order placement. Saved secret fields are shown as filled masks; type a new value only when you want to replace one.
+          </p>
+        )}
         {displayValue(selectedBrokerMeta?.status?.notes) ? <p className="mt-2">{displayValue(selectedBrokerMeta?.status?.notes)}</p> : null}
       </div>
     )}
@@ -551,7 +595,32 @@ const BrokerSetup = () => {
       </div>
     )}
 
-    {brokerFields.map((field, index) => {
+    {isAliceBlue ? (
+      <div className="mb-5 rounded border border-gray-200 bg-white p-4 normal-case">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-bold text-[#252F4A]">AliceBlue broker connection</p>
+            <p className="mt-1 text-sm text-[#4B5675]">
+              Status: {displayStatus(selectedHealth?.token_status || selectedHealth?.login_status)}
+            </p>
+            {selectedSavedCredentials?.alice_client_id ? (
+              <p className="mt-1 text-xs text-[#79829E]">
+                Client ID: {displayValue(selectedSavedCredentials.alice_client_id)}
+              </p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={handleConnectAliceBlue}
+            disabled={isConnectingAliceBlue}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-[#FF5733] px-4 py-2 font-semibold uppercase text-white transition duration-300 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isConnectingAliceBlue ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ExternalLink aria-hidden="true" className="h-4 w-4" />}
+            {hasSavedCredentials ? "Reconnect AliceBlue" : "Connect AliceBlue"}
+          </button>
+        </div>
+      </div>
+    ) : brokerFields.map((field, index) => {
       const normalizedField = toObject(field);
       const fieldId = displayValue(normalizedField.id);
       const inputType = displayValue(normalizedField.type) || "text";
@@ -597,13 +666,15 @@ const BrokerSetup = () => {
     })}
 
     <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-      <button
-        onClick={handleSave}
-        disabled={isSaving || !selectedBroker}
-        className="bg-[#FF5733] uppercase max-lg:mt-3 text-white py-2 px-4 rounded-md font-semibold hover:bg-orange-600 transition duration-300 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {isSaving ? "Saving..." : "Save Credentials"}
-      </button>
+      {!isAliceBlue ? (
+        <button
+          onClick={handleSave}
+          disabled={isSaving || !selectedBroker}
+          className="bg-[#FF5733] uppercase max-lg:mt-3 text-white py-2 px-4 rounded-md font-semibold hover:bg-orange-600 transition duration-300 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isSaving ? "Saving..." : "Save Credentials"}
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={handleTestConnection}
