@@ -88,6 +88,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const latestFetchId = useRef(0);
+  const isFetchingRef = useRef(false);
 
   const [strategyDropdown, setStrategyDropdown] = useState(false);
   const [BrokerDropdown,setBrokerDropdown] = useState(false)
@@ -133,6 +134,10 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
    const response = await postData("api_delete_oposition", { position_time: id, token });
  }
   const fetchIndex = async ({ showLoading = false, reason = "refresh" } = {}) => {
+    if (isFetchingRef.current) {
+      return;
+    }
+    isFetchingRef.current = true;
     const fetchId = latestFetchId.current + 1;
     latestFetchId.current = fetchId;
     const initialRequest = reason === "initial";
@@ -172,9 +177,11 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
         toast.error(error.message || "Unable to refresh dashboard data.");
       }
     } finally {
-      if (fetchId !== latestFetchId.current) return;
-      setIsInitialLoading(false);
-      setIsRefreshing(false);
+      isFetchingRef.current = false;
+      if (fetchId === latestFetchId.current) {
+        setIsInitialLoading(false);
+        setIsRefreshing(false);
+      }
     }
   };
 

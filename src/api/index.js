@@ -102,6 +102,9 @@ export const fetchGetData = async (endpoint, params = {}, token = null) => {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
         };
+        if (endpoint === "api_index") {
+            config.timeout = 15000;
+        }
 
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
@@ -110,6 +113,9 @@ export const fetchGetData = async (endpoint, params = {}, token = null) => {
         const response = await axiosInstance.post(endpoint, urlEncodedData, config);
         return unwrapApiResponse(response.data);
     } catch (error) {
+        if (endpoint === "api_index" && error.code === "ECONNABORTED") {
+            throw new Error("Dashboard is taking longer than expected. Please try again.");
+        }
         const errorMessage = getErrorMessage(error);
         throw new Error(errorMessage);
     }
