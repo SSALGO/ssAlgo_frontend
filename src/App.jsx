@@ -18,7 +18,6 @@ import AuthPage from "./Page/AuthPage";
 import Dashboard from "./Components/Dashbord/Dashboard";
 import AdminDashboard from "./Components/AdminDash/AdminDashboard";
 import StrategyDashboard from "./Components/AdminDash/StrategyDashboard";
-import McxStrategyLab from "./features/mcx/McxStrategyLab";
 import ForgetPage from "./Page/ForgetPage";
 import DeletePopup from "./Components/PopUp/DeletePopup";
 import { postData } from "./api";
@@ -416,17 +415,6 @@ function AppContent() {
                   redirectTo="/login"
                 >
                   <TradeHistory />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/mcx-strategy-lab"
-              element={
-                <ProtectedRoute
-                  isAuthenticated={isAuthenticated}
-                  redirectTo="/login"
-                >
-                  <McxStrategyLab />
                 </ProtectedRoute>
               }
             />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { displayValue } from '../../utils/displayValue';
+import { displayValue, toBooleanFlag } from '../../utils/displayValue';
 import { fetchGetData, postFormData } from "../../api";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -353,6 +353,7 @@ const DynamicForm = ({ formData = {}, onClose }) => {
   const hiddenFields = formData.page.filter(field =>
     field.tag === 'input' && field.type === 'hidden'
   );
+  const isLiveMode = toBooleanFlag(formValues.live);
 
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg">
@@ -366,7 +367,7 @@ const DynamicForm = ({ formData = {}, onClose }) => {
 
       <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-2xl font-bold text-gray-800">Create Strategy</h2>
-        <StatusBadge value={formValues.live ? "Live" : "Paper"} tone={formValues.live ? "live" : "paper"} />
+        <StatusBadge value={isLiveMode ? "Live" : "Paper"} tone={isLiveMode ? "live" : "paper"} />
       </div>
 
       <div className="mb-6">

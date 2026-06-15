@@ -145,12 +145,6 @@ const Sidebar = ({ userType,isOpen, toggleSidebar,changeUserTypeToUser }) => {
               API
             </Link>
           </li>
-          <li className={`mb-4 px-3 font-bold ${location.pathname === '/mcx-strategy-lab' ? 'bg-[#450303] py-2 rounded-md   '  : ''}`}>
-            <Link to="/mcx-strategy-lab" className="flex items-center text-xl text-white gap-2">
-              <img src="/startagy.svg" alt="" />
-              MCX STRATEGY LAB
-            </Link>
-          </li>
           <li className={`mb-4 px-3 font-bold ${location.pathname === '/pricing' ? 'bg-[#450303] py-2 rounded-md  ' : ''}`}>
             <Link to="/pricing" className="flex items-center text-xl text-white gap-2">
               <img src="/pricing.svg" alt="" />

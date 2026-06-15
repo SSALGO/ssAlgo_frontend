@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { displayValue } from '../../utils/displayValue';
+import { displayValue, toBooleanFlag } from '../../utils/displayValue';
 import { fetchGetData, postFormData } from '../../api';
 import OptionGrid, { tableFields } from '../OptionGrid/OptionGrid';
 import { toast } from "react-toastify";
@@ -311,6 +311,7 @@ const DynamicEditForm = ({ formData = {}, onClose }) => {
 
   const visibleFields = formData.page.filter(field => (field.tag !== 'input' || field.type !== 'hidden') && !tableFields.includes(field.name));
   const hiddenFields = formData.page.filter(field => field.tag === 'input' && field.type === 'hidden' && !tableFields.includes(field.name));
+  const isLiveMode = toBooleanFlag(formValues.live);
 
   return (
     <div className="mx-auto p-6 bg-white shadow-lg rounded-lg">
@@ -324,7 +325,7 @@ const DynamicEditForm = ({ formData = {}, onClose }) => {
 
       <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-2xl font-bold text-gray-800">Edit Strategy</h2>
-        <StatusBadge value={formValues.live ? "Live" : "Paper"} tone={formValues.live ? "live" : "paper"} />
+        <StatusBadge value={isLiveMode ? "Live" : "Paper"} tone={isLiveMode ? "live" : "paper"} />
       </div>
       <div className="mb-6">
         <RiskSummaryCard strategy={formValues} compact />
