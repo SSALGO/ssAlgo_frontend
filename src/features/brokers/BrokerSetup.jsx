@@ -75,9 +75,9 @@ const ActiveBrokerCard = ({
   activeBrokerMeta,
   activeHealth,
   activeHasCredentials,
-  isAliceBlue,
   isTesting,
-  isConnectingAliceBlue,
+  isConnectingRedirectBroker,
+  isRedirectBroker,
   onPrimaryAction,
   onTestConnection,
   onManage,
@@ -86,8 +86,8 @@ const ActiveBrokerCard = ({
   const mainStatus = getMainStatus(activeHealth, activeHasCredentials, activeBrokerKey);
   const failed = ["failed", "disconnected"].includes(mainStatus.toLowerCase());
   const lastChecked = activeHealth?.last_verified_at || activeHealth?.last_test_at || activeHealth?.connected_at;
-  const primaryLabel = isAliceBlue
-    ? activeHasCredentials ? "Reconnect AliceBlue" : "Connect AliceBlue"
+  const primaryLabel = isRedirectBroker
+    ? activeHasCredentials ? `Reconnect ${displayValue(activeBrokerMeta?.name)}` : `Connect ${displayValue(activeBrokerMeta?.name)}`
     : activeHasCredentials ? "Manage Credentials" : "Configure Broker";
 
   return (
@@ -124,11 +124,11 @@ const ActiveBrokerCard = ({
         <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
           <button
             type="button"
-            onClick={isAliceBlue ? onPrimaryAction : onManage}
-            disabled={isConnectingAliceBlue}
+            onClick={isRedirectBroker ? onPrimaryAction : onManage}
+            disabled={isConnectingRedirectBroker}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-[#FF5733] px-4 py-2 font-bold uppercase text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isConnectingAliceBlue ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : isAliceBlue ? <ExternalLink aria-hidden="true" className="h-4 w-4" /> : null}
+            {isConnectingRedirectBroker ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : isRedirectBroker ? <ExternalLink aria-hidden="true" className="h-4 w-4" /> : null}
             {primaryLabel}
           </button>
           <button
@@ -261,7 +261,7 @@ const BrokerSetup = () => {
   const [visibleSecretFields, setVisibleSecretFields] = useState({});
   const [revealedSecretValues, setRevealedSecretValues] = useState({});
   const [revealingSecretField, setRevealingSecretField] = useState("");
-  const [isConnectingAliceBlue, setIsConnectingAliceBlue] = useState(false);
+  const [connectingRedirectBroker, setConnectingRedirectBroker] = useState("");
   const [isBrokerPanelOpen, setIsBrokerPanelOpen] = useState(false);
   const [isConfiguringBroker, setIsConfiguringBroker] = useState(false);
   const [healthError, setHealthError] = useState("");
@@ -433,13 +433,15 @@ const BrokerSetup = () => {
     fetchBrokerList();
     fetchBrokerHealth();
     const params = new URLSearchParams(window.location.search);
-    if (params.get("broker") === "aliceblue") {
+    const callbackBroker = params.get("broker");
+    if (["aliceblue", "zerodha"].includes(callbackBroker)) {
       const callbackStatus = params.get("status");
       const message = params.get("message");
+      const brokerName = callbackBroker === "zerodha" ? "Kite" : "AliceBlue";
       if (callbackStatus === "connected") {
-        toast.success(message || "AliceBlue connected");
+        toast.success(message || `${brokerName} connected`);
       } else if (callbackStatus === "failed") {
-        toast.error(message || "AliceBlue connection failed");
+        toast.error(message || `${brokerName} connection failed`);
       }
       params.delete("broker");
       params.delete("status");
@@ -590,18 +592,31 @@ const BrokerSetup = () => {
     }
   };
 
-  const handleConnectAliceBlue = async () => {
-    setIsConnectingAliceBlue(true);
+  const redirectBrokerConfig = {
+    aliceblue: {
+      path: "api/brokers/aliceblue/connect-url",
+      label: "AliceBlue",
+    },
+    zerodha: {
+      path: "api/brokers/kite/login-url",
+      label: "Kite",
+    },
+  };
+
+  const handleConnectRedirectBroker = async (brokerKey = selectedBroker) => {
+    const config = redirectBrokerConfig[brokerKey];
+    if (!config) return;
+    setConnectingRedirectBroker(brokerKey);
     try {
-      const response = await fetchFastApiGetData("api/brokers/aliceblue/connect-url", {}, accessToken);
-      const loginUrl = displayValue(response?.data?.login_url);
+      const response = await fetchFastApiGetData(config.path, {}, accessToken);
+      const loginUrl = displayValue(response?.data?.login_url || response?.data?.loginUrl);
       if (!response?.success || !loginUrl) {
-        throw new Error(response?.message || "Unable to create AliceBlue connect URL.");
+        throw new Error(response?.message || `Unable to create ${config.label} connect URL.`);
       }
       window.location.assign(loginUrl);
     } catch (error) {
-      toast.error(error.message || "Unable to start AliceBlue connection.");
-      setIsConnectingAliceBlue(false);
+      toast.error(error.message || `Unable to start ${config.label} connection.`);
+      setConnectingRedirectBroker("");
     }
   };
 
@@ -629,7 +644,7 @@ const BrokerSetup = () => {
 
   const selectedBrokerMeta = brokerList.find((broker) => broker.key === selectedBroker);
   const selectedHealth = brokerHealth.find((health) => health?.broker === selectedBroker);
-  const isAliceBlue = selectedBroker === "aliceblue";
+  const isRedirectBroker = Boolean(redirectBrokerConfig[selectedBroker]);
   const selectedSavedCredentials = toObject(savedCredentials[selectedBroker]);
   const hasSavedCredentials = Object.keys(selectedSavedCredentials).length > 0 || Boolean(savedApiId);
   const configuredBrokers = brokerList.filter((broker) => (
@@ -639,7 +654,7 @@ const BrokerSetup = () => {
   const activeHealth = brokerHealth.find((health) => health?.broker === activeBroker);
   const activeSavedCredentials = toObject(savedCredentials[activeBroker]);
   const activeHasCredentials = activeBroker === "paper" || Object.keys(activeSavedCredentials).length > 0;
-  const isActiveAliceBlue = activeBroker === "aliceblue";
+  const isActiveRedirectBroker = Boolean(redirectBrokerConfig[activeBroker]);
   const advancedBrokerKey = selectedBroker || activeBroker;
   const advancedBrokerMeta = brokerList.find((broker) => broker.key === advancedBrokerKey);
   const advancedHealth = brokerHealth.find((health) => health?.broker === advancedBrokerKey);
@@ -672,23 +687,26 @@ const BrokerSetup = () => {
           </button>
         </div>
 
-        {isAliceBlue ? (
+        {isRedirectBroker ? (
           <div className="rounded border border-blue-200 bg-blue-50 p-4 text-blue-900">
-            <p className="font-bold">AliceBlue redirect authentication</p>
+            <p className="font-bold">{displayValue(selectedBrokerMeta?.name)} redirect authentication</p>
             <p className="mt-1 text-sm">
-              AliceBlue connects through broker login redirect. Password and TOTP fields are not collected here.
+              {displayValue(selectedBrokerMeta?.name)} connects through broker login redirect. Secret tokens are stored only on the backend.
             </p>
             {selectedSavedCredentials?.alice_client_id ? (
               <p className="mt-2 text-sm">Client ID: {displayValue(selectedSavedCredentials.alice_client_id)}</p>
             ) : null}
+            {selectedSavedCredentials?.kiteUserId ? (
+              <p className="mt-2 text-sm">Kite User ID: {displayValue(selectedSavedCredentials.kiteUserId)}</p>
+            ) : null}
             <button
               type="button"
-              onClick={handleConnectAliceBlue}
-              disabled={isConnectingAliceBlue}
+              onClick={() => handleConnectRedirectBroker(selectedBroker)}
+              disabled={connectingRedirectBroker === selectedBroker}
               className="mt-4 inline-flex items-center justify-center gap-2 rounded-md bg-[#FF5733] px-4 py-2 font-bold uppercase text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isConnectingAliceBlue ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ExternalLink aria-hidden="true" className="h-4 w-4" />}
-              {hasSavedCredentials ? "Reconnect AliceBlue" : "Connect AliceBlue"}
+              {connectingRedirectBroker === selectedBroker ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ExternalLink aria-hidden="true" className="h-4 w-4" />}
+              {hasSavedCredentials ? `Reconnect ${displayValue(selectedBrokerMeta?.name)}` : `Connect ${displayValue(selectedBrokerMeta?.name)}`}
             </button>
           </div>
         ) : (
@@ -781,7 +799,7 @@ const BrokerSetup = () => {
             ["Login raw", formatStatus(advancedHealth?.login_status)],
             ["Websocket raw", formatStatus(advancedHealth?.websocket_status)],
             ["Token status", formatStatus(advancedHealth?.token_status, "Not available")],
-            ["Client ID", displayValue(advancedSavedCredentials?.alice_client_id || advancedSavedCredentials?.client_id || advancedSavedCredentials?.apikey)],
+            ["Client ID", displayValue(advancedSavedCredentials?.alice_client_id || advancedSavedCredentials?.kiteUserId || advancedSavedCredentials?.client_id || advancedSavedCredentials?.apikey)],
             ["Last tested", formatDateTime(advancedHealth?.last_test_at)],
             ["Connected at", formatDateTime(advancedHealth?.connected_at)],
             ["Last verified", formatDateTime(advancedHealth?.last_verified_at)],
@@ -826,10 +844,10 @@ const BrokerSetup = () => {
         activeBrokerMeta={activeBrokerMeta}
         activeHealth={activeHealth}
         activeHasCredentials={activeHasCredentials}
-        isAliceBlue={isActiveAliceBlue}
         isTesting={isTesting}
-        isConnectingAliceBlue={isConnectingAliceBlue}
-        onPrimaryAction={handleConnectAliceBlue}
+        isRedirectBroker={isActiveRedirectBroker}
+        isConnectingRedirectBroker={connectingRedirectBroker === activeBroker}
+        onPrimaryAction={() => handleConnectRedirectBroker(activeBroker)}
         onTestConnection={() => handleTestConnection(activeBroker)}
         onManage={() => openManageBroker(activeBroker || selectedBroker)}
       />
