@@ -8,7 +8,7 @@ import {
   toArray,
   toObject,
 } from "../../utils/displayValue";
-import { ErrorState, StatusBadge } from "../../shared/components/TradingUi";
+import { ErrorState, StatusBadge } from "../../components/common/TradingUi";
 
 const MASKED_SECRET_VALUE = "********";
 
