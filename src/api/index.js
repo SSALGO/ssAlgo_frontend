@@ -103,7 +103,7 @@ export const fetchGetData = async (endpoint, params = {}, token = null) => {
             },
         };
         if (endpoint === "api_index") {
-            config.timeout = 15000;
+            config.timeout = 30000;
         }
 
         if (token) {

@@ -106,6 +106,22 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
   const [dashboardError, setDashboardError] = useState("")
   const [pendingLiveStrategy, setPendingLiveStrategy] = useState(null);
   const [busyStrategyId, setBusyStrategyId] = useState("");
+  const lifecycleActionsRef = useRef(new Set());
+
+  const runLifecycleAction = async (strategyId, action) => {
+    if (!strategyId || lifecycleActionsRef.current.has(strategyId)) {
+      return false;
+    }
+    lifecycleActionsRef.current.add(strategyId);
+    setBusyStrategyId(strategyId);
+    try {
+      await action();
+      return true;
+    } finally {
+      lifecycleActionsRef.current.delete(strategyId);
+      setBusyStrategyId((current) => current === strategyId ? "" : current);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -148,7 +164,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
     }
     try {
       const token = localStorage.getItem("token");
-      const response = await postData("api_index", { token });
+      const response = await postData("api_index", {}, token);
       if (fetchId !== latestFetchId.current) return;
       const indexData = getApiData(response) || {};
       setStrategies(normalizeRecords(indexData.strategy));
@@ -172,8 +188,11 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
     } catch (error) {
       if (fetchId !== latestFetchId.current) return;
       console.error("Error fetching APIs:", error);
-      setDashboardError(error.message || "Unable to load dashboard data.");
-      if (!initialRequest) {
+      const backgroundRefresh = reason === "interval";
+      if (!backgroundRefresh) {
+        setDashboardError(error.message || "Unable to load dashboard data.");
+      }
+      if (!initialRequest && !backgroundRefresh) {
         toast.error(error.message || "Unable to refresh dashboard data.");
       }
     } finally {
@@ -211,14 +230,14 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
     "TIME",
     "BOT",
     "SYMBOL",
-    // "SLTP",
-    // "LTP",
+    "BUY QTY",
+    "SELL QTY",
+    "NET QTY",
+    "LTP",
     "LIVE",
-    "LOTS",
     "B/S",
-    "Mode",
     "DURATION",
-    // "Status",
+    "STATUS",
   ];
 
   const runStartStrategy = async (id) => {
@@ -239,39 +258,39 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
       setPendingLiveStrategy(row);
       return;
     }
-    try {
-      setBusyStrategyId(row.botcode);
-      await runStartStrategy(row.botcode);
-    } catch (error) {
-      toast.error(error.message || "Unable to start the strategy.");
-    } finally {
-      setBusyStrategyId("");
-    }
+    await runLifecycleAction(row.botcode, async () => {
+      try {
+        await runStartStrategy(row.botcode);
+      } catch (error) {
+        toast.error(error.message || "Unable to start the strategy.");
+      }
+    });
   };
 
   const confirmLiveStart = async () => {
     if (!pendingLiveStrategy) return;
     const strategyId = pendingLiveStrategy.botcode;
-    try {
-      setBusyStrategyId(strategyId);
-      await runStartStrategy(strategyId);
-      setPendingLiveStrategy(null);
-    } catch (error) {
-      toast.error(error.message || "Unable to start live strategy.");
-    } finally {
-      setBusyStrategyId("");
-    }
+    await runLifecycleAction(strategyId, async () => {
+      try {
+        await runStartStrategy(strategyId);
+        setPendingLiveStrategy(null);
+      } catch (error) {
+        toast.error(error.message || "Unable to start live strategy.");
+      }
+    });
   };
 
   const handleStopClick = async (id) => {
     const token = localStorage.getItem("token");
-    try {
-      await postData("api_stop_ssalgo", { id, token });
-      toast.success("Strategy stopped successfully.");
-      fetchIndex({ showLoading: false, reason: "action" });
-    } catch (error) {
-      toast.error(error.message || "Unable to stop the strategy.");
-    }
+    await runLifecycleAction(id, async () => {
+      try {
+        await postData("api_stop_ssalgo", { id, token });
+        toast.success("Strategy stopped successfully.");
+        await fetchIndex({ showLoading: false, reason: "action" });
+      } catch (error) {
+        toast.error(error.message || "Unable to stop the strategy.");
+      }
+    });
   };
 
 
@@ -326,16 +345,18 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
     setShowDeletePopup(false);
 
-    try {
-      await postData("api_delete_strategy", {
-        id: itemToDelete,
-        token,
-      });
-      toast.success("Strategy deleted successfully.");
-      await fetchIndex({ showLoading: false, reason: "action" });
-    } catch (error) {
-      toast.error(error.message || "Unable to delete the strategy.");
-    }
+    await runLifecycleAction(itemToDelete, async () => {
+      try {
+        await postData("api_delete_strategy", {
+          id: itemToDelete,
+          token,
+        });
+        toast.success("Strategy deleted successfully.");
+        await fetchIndex({ showLoading: false, reason: "action" });
+      } catch (error) {
+        toast.error(error.message || "Unable to delete the strategy.");
+      }
+    });
 
   };
 
@@ -402,6 +423,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
           <button
             onClick={() => OnModify(row)}
+            disabled={isStarting}
             className=" uppercase pr-3  max-md:text-[12px]  bg-[#3985FF] font-bold text-sm justify-center text-white rounded hover:bg-blue-600 flex gap-2 items-center"
           >
             <img src="edit.svg" alt="play" className="pl-3" />
@@ -409,6 +431,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
           </button>
           <button
             onClick={() => handleDeletClick(row.botcode)}
+            disabled={isStarting}
             className="uppercase px-3 pr-5 max-lg:pr-5  max-lg:px-2  py-1 bg-[#EE2358] font-bold text-sm max-md:text-[12px] text-white rounded hover:bg-red-600 flex gap-1 items-center"
           >
             <img src="delete.svg" alt="play" />
@@ -421,13 +444,15 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
         <>
           <button
             onClick={() => handleStopClick(row.botcode)}
+            disabled={isStarting}
             className="uppercase max-md:text-[12px] pr-3 gap-2  font-bold text-sm py-1 bg-[#EE2358] text-white rounded hover:bg-red-600 flex  items-center"
           >
             <img src="play1.png" alt="play" className="h-3 pl-2 " />
-            Stop
+            {isStarting ? "Working..." : "Stop"}
           </button>
           <button
             onClick={() => OnModify(row)}
+            disabled={isStarting}
             className="uppercase px-3 max-lg:px-2  py-1  max-md:text-[12px]  bg-[#3985FF] font-bold text-sm justify-center text-white rounded hover:bg-blue-600 flex gap-2 items-center"
           >
             <img src="edit.svg" alt="play" />
@@ -649,13 +674,6 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
 
         {!ShowDynamicForm && !showEditForm && (
           <div className="uppercase max-lg:mt-1">
-            {isRefreshing && !isInitialLoading ? (
-              <div className="mb-3 flex items-center gap-2 text-xs font-semibold normal-case text-[#79829E]">
-                <Loader2 size={14} className="animate-spin" />
-                Refreshing dashboard data
-              </div>
-            ) : null}
-
             {isInitialLoading ? (
               <>
                 <BrokerStatusSkeleton />
@@ -813,7 +831,7 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
                 <tbody className="divide-y divide-dashed ">
                   {openPositions.map((position, index) => (
                     <tr
-                      key={index}
+                      key={position._id || position.entry_id || index}
                       className="font-medium"
                       // className={position.pnl >= 0 ? "bg-green-50" : "bg-red-50"}
                     >
@@ -841,30 +859,33 @@ const Dashboard = ({ changeUserTypeToAdmin,user,headerData }) => {
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
                         {displayValue(position.optionname)}
                       </td>
-                      {/* <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        {position.optionexit}
-                      </td> */}
-                      {/* <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        {position.current_price}
-                      </td> */}
-                      <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        <StatusBadge value={position.live ? "Live" : "Paper"} tone={position.live ? "live" : "paper"} />
+                      <td className="px-5 max-lg:px-2 max-lg:py-2 py-3 max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A]">
+                        {displayValue(position.buy_quantity)}
+                      </td>
+                      <td className="px-5 max-lg:px-2 max-lg:py-2 py-3 max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A]">
+                        {displayValue(position.sell_quantity)}
+                      </td>
+                      <td className="px-5 max-lg:px-2 max-lg:py-2 py-3 max-md:text-[12px] whitespace-nowrap text-sm font-bold text-[#252F4A]">
+                        {displayValue(position.net_quantity)}
+                      </td>
+                      <td className="px-5 max-lg:px-2 max-lg:py-2 py-3 max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A]">
+                        {displayValue(position.optionexit)}
                       </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        {displayValue(position.lot)}
+                        <StatusBadge value={position.live ? "Live" : "Paper"} tone={position.live ? "live" : "paper"} />
                       </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
                         {displayValue(position.side)}
                       </td>
                       <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        { position.BSmode ? "Buy" : "Sell"}
-                      </td>
-                      <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
                         { (position.intraday ? "Intraday" : "Positional")}
                       </td>
-                      {/* <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
-                        {position.status}
-                      </td> */}
+                      <td className="px-5 max-lg:px-2 max-lg:py-2 py-3 max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A]">
+                        <StatusBadge
+                          value={Number(position.net_quantity) === 0 ? "Closed" : "Open"}
+                          tone={Number(position.net_quantity) === 0 ? "paused" : "active"}
+                        />
+                      </td>
                       {/* <td className="px-5 max-lg:px-2 max-lg:py-2 py-3  max-md:text-[12px] whitespace-nowrap text-sm text-[#252F4A] text-wrap">
                         <button className="px-3 max-lg:px-2  py-1  max-md:text-[12px] bg-[#EE2358] text-white rounded hover:bg-red-600">
                           Exit

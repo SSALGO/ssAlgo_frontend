@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import StrategyTable from './StrategyTable'; // Updated import path
 import { postData } from '../../../api';
 import DeletePopup from "../../../components/common/DeletePopup";
@@ -14,6 +14,20 @@ const StrategyDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [editData, setEditData] = useState({});
   const [searchQuery, setSearchQuery] = useState(''); // New state for search query
+  const [busyStrategyId, setBusyStrategyId] = useState('');
+  const lifecycleActionsRef = useRef(new Set());
+
+  const runLifecycleAction = async (strategyId, action) => {
+    if (!strategyId || lifecycleActionsRef.current.has(strategyId)) return;
+    lifecycleActionsRef.current.add(strategyId);
+    setBusyStrategyId(strategyId);
+    try {
+      await action();
+    } finally {
+      lifecycleActionsRef.current.delete(strategyId);
+      setBusyStrategyId((current) => current === strategyId ? '' : current);
+    }
+  };
 
   const onClose = () => {
     setShowEditForm(false);
@@ -56,13 +70,17 @@ const captitalLater=function(str) {
   const token = localStorage.getItem('token');
 
   const handleStart = async (id) => {
-    await postData("api_start_admin_ssalgo", { id, token });
-    fetchStrategy();
+    await runLifecycleAction(id, async () => {
+      await postData("api_start_admin_ssalgo", { id, token });
+      await fetchStrategy();
+    });
   };
 
   const handleStop = async (id) => {
-    await postData("api_stop_admin_ssalgo", { id, token });
-    fetchStrategy();
+    await runLifecycleAction(id, async () => {
+      await postData("api_stop_admin_ssalgo", { id, token });
+      await fetchStrategy();
+    });
   };
 
   const handleModify = async (data) => {
@@ -78,8 +96,10 @@ const captitalLater=function(str) {
 
   const confirmDelete = async () => {
     setShowDeletePopup(false);
-    await postData("api_delete_admin_ssalgo", { id: itemToDelete, token });
-    fetchStrategy();
+    await runLifecycleAction(itemToDelete, async () => {
+      await postData("api_delete_admin_ssalgo", { id: itemToDelete, token });
+      await fetchStrategy();
+    });
   };
 
   const cancelDelete = () => {
@@ -127,6 +147,7 @@ const captitalLater=function(str) {
               onStop={handleStop}
               onModify={handleModify}
               onDelete={handleDelete}
+              busyStrategyId={busyStrategyId}
             />
           )}
         </div>

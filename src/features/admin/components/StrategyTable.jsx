@@ -1,7 +1,7 @@
 
 import React from "react";
 
-const StrategyTable = ({ data, onStart, onStop, onModify, onDelete }) => {
+const StrategyTable = ({ data, onStart, onStop, onModify, onDelete, busyStrategyId }) => {
   // Define the headers you want to display
   const headers = ['Actions', 'Users', 'Time', 'BOT', 'Strategy', 'Symbol', 'TF', 'Live', 'LOTS', 'Duration', 'B/S Mode', 'Status'];
 
@@ -27,21 +27,24 @@ const StrategyTable = ({ data, onStart, onStop, onModify, onDelete }) => {
                 {row.Status === 'Paused' ? (
                   <>
                     <button
+                      disabled={busyStrategyId === row._id}
                       className="bg-[#43C64C] text-white px-3 max-lg:px-2 py-1 max-md:py-[2px] rounded mr-2 text-[12px]"
                       onClick={() => {
                         onStart(row._id);
                         // console.log('Start:', row);
                       }}
                     >
-                      Start
+                      {busyStrategyId === row._id ? "Working..." : "Start"}
                     </button>
                     <button
+                      disabled={busyStrategyId === row._id}
                       className="bg-[#3985FF] text-white px-3 max-lg:px-2 py-1 max-md:py-[2px] rounded mr-2 text-[12px]"
                       onClick={() => onModify(row.Data)}
                     >
                       Modify
                     </button>
                     <button
+                      disabled={busyStrategyId === row._id}
                       className=" bg-[#EE2358] text-white px-3 text-[12px] max-lg:px-2 py-1 max-md:py-[2px] rounded"
                       onClick={() => onDelete(row._id)}
                     >
@@ -51,12 +54,14 @@ const StrategyTable = ({ data, onStart, onStop, onModify, onDelete }) => {
                 ) : (
                   <>
                     <button
+                      disabled={busyStrategyId === row._id}
                       className="bg-[#EE2358] text-white px-3 py-1 rounded mr-2"
                       onClick={() => onStop(row._id)}
                     >
-                      Stop
+                      {busyStrategyId === row._id ? "Working..." : "Stop"}
                     </button>
                     <button
+                      disabled={busyStrategyId === row._id}
                       className="bg-[#3985FF] text-white px-3 py-1 rounded"
                       onClick={() => onModify(row.Data)}
                     >
